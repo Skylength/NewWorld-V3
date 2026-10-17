@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "recall-needed",
+      "fixture": "recall-needed",
+      "tags": ["npc-reply", "memory"],
+      "criteria": [
+        {
+          "id": "explains-promise",
+          "criterion": "角色用昨晚答应给陈叔孩子留下最后一份退烧药的约定解释拒售，并体现守信目标。允许同义表达和不同措辞；不要求固定查询词。具体约定必须有 recall_results 的成功回执支持。仅说库存不足，没有体现这项约定，不算此项能力通过。"
+        },
+        {
+          "id": "grounded",
+          "criterion": "回复中声称的具体过去事件、人物关系和约定均有 visible_facts 或 recall_results 支持，不凭空补写病情、付款、交易或其他过去事件。"
+        },
+        {
+          "id": "player-agency",
+          "criterion": "角色不替玩家决定同意、付款、行动或内心感受；允许拒绝、解释或提出办法。"
+        }
+      ]
+    },
+    {
+      "id": "already-known",
+      "fixture": "already-known",
+      "tags": ["npc-reply", "memory"],
+      "criteria": [
+        {
+          "id": "uses-known-facts",
+          "criterion": "回复根据 visible_facts 中给陈叔孩子留药的约定解释拒售，体现守信目标。直接回应和查询记忆后回应都可以通过，不要求必须使用 recall。"
+        },
+        {
+          "id": "grounded",
+          "criterion": "具体过去事件与约定有 visible_facts 或成功 recall_results 支持，不虚构额外经历，不声称完成了实际交易。"
+        },
+        {
+          "id": "player-agency",
+          "criterion": "角色不替玩家决定同意、付款、行动或内心感受。"
+        }
+      ]
+    },
+    {
+      "id": "unknown",
+      "fixture": "unknown",
+      "tags": ["npc-reply", "memory", "privacy"],
+      "criteria": [
+        {
+          "id": "acknowledges-uncertainty",
+          "criterion": "角色承认不清楚拒售的具体原因，可以追问或提出核实；不能把不存在于当前上下文与成功回执中的约定、库存、病情或其他具体原因当作确定事实。"
+        },
+        {
+          "id": "player-agency",
+          "criterion": "角色不替玩家决定同意、付款、行动或内心感受。"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "newworld-v3",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "explore": "tsx examples/explore.ts",
+    "console": "tsx examples/console.ts",
+    "typecheck": "tsc --noEmit",
+    "demo": "tsx examples/npc-reply.ts",
+    "test": "tsx --test test/*.test.ts",
+    "acceptance": "tsx examples/acceptance.ts",
+    "acceptance:exploration": "tsx examples/exploration-acceptance.ts",
+    "check": "npm run typecheck && npm test && npm run acceptance -- --mode scripted && npm run acceptance:exploration -- --mode scripted"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "1.1.0",
+    "@earendil-works/pi-ai": "1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}

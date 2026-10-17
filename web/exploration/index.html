@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#20272b" />
+  <title>新世界 · 调试工作台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%2320272b%22/%3E%3Cpath d=%22M8 9v14h16M13 7v11h7V7M6 13h20%22 fill=%22none%22 stroke=%22%23f5f5f0%22 stroke-width=%222%22/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/style.css" />
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="#debug" aria-label="新世界调试工作台"><span class="brand-symbol" aria-hidden="true">世</span><span>新世界 <small>OBSERVATORY</small></span></a>
+    <nav class="mode-nav" aria-label="工作模式"><a id="mode-play" href="#play">试玩</a><a id="mode-debug" href="#debug" aria-current="page">调试工作台</a></nav>
+    <div class="header-context"><span id="mode-badge" class="environment-badge">连接中</span><span id="connection-status" class="connection-status">本地服务</span></div>
+    <button id="toggle-saves" class="header-button" type="button" aria-expanded="false" aria-controls="save-drawer">存档 <span aria-hidden="true">⌄</span></button>
+  </header>
+  <div id="connection-alert" class="connection-alert" role="alert" hidden></div>
+  <div id="mode-notice" class="mode-notice" hidden></div>
+  <section id="save-drawer" class="save-drawer" aria-label="存档管理" hidden>
+    <div><strong id="save-world-title">正在读取世界</strong><p id="save-status" class="hint">读取存档…</p></div>
+    <label class="save-picker">选择旅程<select id="save-select" disabled><option>正在读取…</option></select></label>
+    <div class="save-actions"><button id="load-save" class="button secondary" type="button" disabled>继续存档</button><button id="new-world" class="button secondary" type="button" disabled>＋ 新世界</button><button id="refresh-saves" class="button quiet" type="button">刷新</button><a class="button quiet" href="/api/export" download>导出存档 ↗</a></div>
+    <p class="hint save-explanation">每轮自动保存。新建世界会保留已有存档。</p>
+  </section>
+
+  <main id="play-page" class="play-page" aria-label="探索试玩" hidden>
+    <div class="play-topline"><div><span class="eyebrow">EXPLORATION</span><h1 id="world-title">正在打开世界</h1></div><div class="play-location"><strong id="current-location">—</strong><span id="world-clock" class="hint">等待世界状态</span></div></div>
+    <div id="story-scroll" class="story-scroll" tabindex="0" aria-label="游玩叙述，可滚动查看历史"><div id="story" class="story"><div class="empty-state">正在读取这个世界…</div></div></div>
+    <div class="composer-area">
+      <div id="config-notice" class="callout warning" hidden>模型尚未配置。请在本地 .env 中配置凭据与服务地址后重启。默认 luna 判断结构，sol 生成文本。</div>
+      <div id="turn-status" class="turn-status" role="status" aria-live="polite" hidden></div>
+      <div id="action-error" class="callout error" role="alert" hidden></div>
+      <form id="action-form" class="composer"><label class="sr-only" for="action-input">你准备做什么？</label><textarea id="action-input" name="action" rows="3" maxlength="2000" placeholder="去一个未知的地方，或仔细看看眼前的世界…" disabled></textarea><div class="composer-bottom"><span class="hint input-shortcut">Enter 发送 · Shift + Enter 换行</span><span id="character-count" class="hint">0 / 2000</span><button id="cancel-turn" class="button secondary" type="button" hidden>取消生成</button><button id="send-action" class="button primary" type="submit" disabled>行动 ↗</button></div></form>
+      <div class="example-actions"><span class="hint">试着说</span><button type="button" data-example="我准备前往南疆，快进到抵达。">前往南疆</button><button type="button" data-example="我仔细观察周围，寻找此前没有注意到的细节和可以接触的人。">观察周围</button><button type="button" data-example="我在附近一处石墙上刻下一个小小的星形记号。">留下记号</button></div>
+      <div class="play-footnote"><span>区域探索原型 · 完整独立 NPC 模拟尚未接入</span><a href="#debug">查看运行链路 →</a></div>
+    </div>
+  </main>
+
+  <main id="debug-page" class="debug-shell" aria-label="调试工作台">
+    <aside id="runs-panel" class="runs-panel" aria-label="运行记录">
+      <div class="runs-heading"><div><span class="eyebrow">RUNS</span><h1>运行记录 <span id="run-count" class="count">0</span></h1></div><button id="toggle-runs" class="button quiet" type="button" aria-expanded="true" aria-controls="runs-body">收起列表</button></div>
+      <div id="runs-body" class="runs-body"><label class="search-box"><span aria-hidden="true">⌕</span><input id="run-search" type="search" placeholder="搜索行动或运行 ID" aria-label="搜索运行记录" /></label><div class="run-filters"><label class="sr-only" for="run-filter">运行状态筛选</label><select id="run-filter"><option value="all">全部状态</option><option value="failed">失败</option><option value="cancelled">已取消</option><option value="completed">已提交</option><option value="running">运行中</option></select><label class="follow-control"><input id="follow-latest" type="checkbox" checked /><span>跟随最新</span></label></div><div id="run-list" class="run-list"><div class="list-empty">读取运行记录…</div></div></div>
+      <div class="runs-footer"><span id="debug-world-name">当前世界</span><span id="current-version" class="mono">—</span></div>
+    </aside>
+    <section class="debug-workspace" aria-label="所选运行">
+      <header id="run-summary" class="run-summary"><div class="eyebrow">INSPECT RUN</div><h2>正在读取调试信息</h2></header>
+      <div class="workspace-toolbar"><div id="debug-tabs" class="debug-tabs" role="tablist" aria-label="调试视图"><button id="tab-overview" type="button" role="tab" aria-selected="true" aria-controls="debug-content" data-tab="overview">运行链路</button><button id="tab-context" type="button" role="tab" aria-selected="false" aria-controls="debug-content" tabindex="-1" data-tab="context">上下文</button><button id="tab-changes" type="button" role="tab" aria-selected="false" aria-controls="debug-content" tabindex="-1" data-tab="changes">世界变化</button><button id="tab-world" type="button" role="tab" aria-selected="false" aria-controls="debug-content" tabindex="-1" data-tab="world">当前世界</button></div></div>
+      <div id="debug-content" class="debug-content" role="tabpanel" aria-labelledby="tab-overview" tabindex="0"></div>
+    </section>
+    <aside id="evidence-panel" class="evidence-panel" aria-label="证据详情"><div class="evidence-topline"><span class="eyebrow">INSPECTOR</span><button id="copy-evidence" class="button quiet" type="button" disabled>复制证据</button></div><div id="evidence-content" class="evidence-content"><div class="empty-state compact">点击链路中的节点，查看对应证据。</div></div></aside>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
