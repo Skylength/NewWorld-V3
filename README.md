@@ -4,7 +4,15 @@
 
 ## 当前实现
 
-动态区域探索提供本地试玩页和调试控制台：从简短宗门开局，自然语言前往未知地点、调查并丰富区域、改变环境、离开后返回。地点与重要状态自动保存。具体范围和实现见 [动态区域 PRD](docs/project/exploration/PRD.md)、[技术方案](docs/project/exploration/ARCHITECTURE.md)。该功能已实现，待用户试玩验收。
+2026-11-06 提示词候选优化：通用世界主持、自然推进尺度、具体场景内容与事实持久化；6 轮真实操作完成，但主动剧情体验仍未验收。独立候选入口 http://127.0.0.1:4334/#play，启动 `npm run explore -- --port 4334 --data data/exploration-prompt-v3`；旧 4330/4332 服务未自动更新。
+
+2026-11-06 通用游玩页已接入：聊天式玩家行动、连续叙事、地图/场景/日志按需面板；人物、背包、技能标注待开放。桌面与窄屏人工检查完成，待用户验收；调试工作台主体沿用现有页面。
+
+2026-10-23 地图与提示词差异已接入：试玩选择“探索新区域”生成地点后，地图自动出现节点；点击已知地点执行固定目标的转场；当时默认“就地行动”不能改位置（现已改为自由行动）。调试工作台的“提示词差异”逐行比较同阶段的实际请求，显示新增、删除和行号。类型检查及四轮真实试玩已完成，用户验收仍待进行。
+
+动态区域探索提供本地试玩页和调试控制台：从简短宗门开局，自然语言前往未知地点、调查并丰富区域、改变环境、离开后返回。地点与重要状态自动保存。具体范围和实现见 [世界与动态区域 PRD](docs/project/exploration/PRD.md)、[技术架构](docs/project/exploration/ARCHITECTURE.md)。该功能已实现，待用户试玩验收。
+
+2026-10-23 已按“世界档案、上下文装配、统一生成与更新”的简化方案整理上述两份文档 v0.2，供审阅。文档区分现有实现、模型行为约束与后续 NPC 接入；本次整理不包含新增产品实现或功能复测，历史验证与验收状态保留。
 
 操作示例、实际验证及已知边界见 [区域探索测试报告](docs/project/exploration/TEST_REPORT.md)。已有真实模型样本，待用户试玩验收；最初发现的失败也在报告中保留。
 
@@ -26,7 +34,7 @@
 
     npm run explore
 
-本次已启动的调试工作台为 http://127.0.0.1:4320/#debug，试玩为 http://127.0.0.1:4320/#play。工作台连接现有 4319 世界服务，共用 `data/exploration-routed/` 存档与 sol/luna 路由。需要重启同一试玩时先执行 `npm run explore -- --port 4319 --data data/exploration-routed`，再执行 `npm run console`。默认 explore 命令仍使用 4318 与 `data/exploration/`，新启动时也直接提供完整工作台。
+本次地图试玩入口为 http://127.0.0.1:4330/#play，调试为 http://127.0.0.1:4330/#debug，使用独立的 `data/exploration-map/` 旅程，保留原存档目录。重启同一旅程执行 `npm run explore -- --port 4330 --data data/exploration-map`。默认 explore 命令仍使用 4318 与 `data/exploration/`；既有存档可随新服务读取，旧单阶段记录和没有操作类型的历史记录继续展示。独立工作台可另用 `npm run console -- --port 4331 --api http://127.0.0.1:4330` 连接同一世界。
 
 可用 `npm run explore -- --port 4319 --data data/exploration` 更改端口或存档目录。调试工作台支持运行筛选与固定、阶段链路、模型耗时时间条、上下文字符组成和区域变化对照；右侧按需查看原始证据，当前世界与历史记录分开。每次行动最多两次模型请求，整轮共用 120 秒超时，无隐藏重试；结构和叙述都成功后一起保存，任一阶段失败或取消都不提交半轮结果。存档只保存在本地，关闭后世界暂停，创建新世界不会删除旧存档；旧的单阶段历史记录仍可查看。
 
@@ -38,21 +46,12 @@
 
 三个固定场景分别覆盖：记忆中有答案但上下文未提供、当前上下文已包含答案、NPC 私人记忆中没有答案。
 
-## 自动验收
+## 检查与验证
 
     npm run check
-    npm run acceptance -- --mode scripted --trials 2
-    npm run acceptance -- --mode live --trials 3
-    npm run acceptance:exploration -- --mode scripted
-    npm run acceptance:exploration -- --mode live
+2026-10-23 按用户要求移除现有工程测试、自动验收代码、场景和测试 CI，并禁止新增、修改或生成测试文件，具体见 [AGENTS.md](AGENTS.md)。`check` 现在仅执行类型检查，无需 API key；功能行为通过已有 `explore`、`console` 和 `demo` 入口人工验证。
 
-check 一次执行类型检查、工程测试和 scripted 场景，无需 API key。scripted 模式经过真实 Pi loop，验证程序机制，语义评分会标为 skipped。
-
-live 模式使用真实角色模型与裁判模型，先做硬性检查，再按场景标准进行语义评分；每次 trial 独立初始化，保留全部失败。角色默认使用文本路由 sol，裁判默认使用结构路由 luna；可用 ACCEPTANCE_JUDGE_MODEL 单独覆盖裁判模型。裁判 key/base URL 可分别配置，默认复用已有凭据和端点。操作方法和历史结果统一见 [Stage 1 测试报告](docs/project/stage1/TEST_REPORT.md)。
-
-报告位于 reports/acceptance/，包含状态、逐项判定、请求与工具轨迹、裁判证据和每个场景的通过次数。功能失败退出 1，执行或裁判错误退出 2。
-
-GitHub workflow 对相关 push/PR 自动运行工程检查和 scripted 场景；配置仓库模型凭据、模型变量和 LIVE_ACCEPTANCE_ENABLED 后，自动运行 live 验收。目前 workflow 仅在本地写入，尚未在 GitHub 执行。
+`fixtures/` 中的数据仍用于试玩初始化和 NPC 演示，继续保留。历史测试报告与 `reports/` 中的已有运行产物保留；报告中的旧测试命令和裁判配置已不再可用，历史通过结果不代表当前版本重新验证通过。
 
 ## 阶段状态
 

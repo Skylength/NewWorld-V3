@@ -14,7 +14,7 @@ export function createConsoleServer(apiUrl: string) {
     throw new Error("工作台 API 必须指向本机 HTTP 服务根地址");
   }
   const reads = new Set(["/api/state", "/api/saves", "/api/export"]);
-  const writes = new Set(["/api/turn", "/api/cancel", "/api/new", "/api/load"]);
+  const writes = new Set(["/api/turn", "/api/travel", "/api/cancel", "/api/new", "/api/load"]);
   return createServer((request, response) => {
     void (async () => {
       const host = request.headers.host ?? "";

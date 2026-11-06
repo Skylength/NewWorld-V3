@@ -38,6 +38,12 @@ export interface WorldTurnDraft {
   events: string[];
 }
 
+/** The host chooses the operation; model output cannot grant itself movement permission. */
+export type ExplorationIntent =
+  | { kind: "interact" }
+  | { kind: "explore" }
+  | { kind: "travel"; destinationId: string };
+
 export interface WorldChange {
   kind: "created" | "enriched" | "state" | "moved";
   regionId: string;
@@ -92,6 +98,8 @@ export interface ExplorationRun {
   worldId: string;
   action: string;
   baseRevision: number;
+  intent?: ExplorationIntent;
+  sourceRegionId?: string;
   status: "running" | "completed" | "failed" | "cancelled";
   phase: string;
   model: string;

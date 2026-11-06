@@ -110,7 +110,7 @@ export function runOutcome(run) {
   const names=historicalNames(run);
   const committed=run.status==='completed';
   const moved=run.changes?.find(change=>change.kind==='moved');
-  const fromId=moved?.before||run.context?.activeRegionIds?.at(-1)||'';
+  const fromId=moved?.before||run.sourceRegionId||run.context?.activeRegionIds?.at(-1)||'';
   const toId=committed ? moved?.after||run.draft?.destinationId||fromId : run.draft?.destinationId||fromId;
   const location=id=>({id,name:names.get(id)||id||'未记录'});
   const changes=committed?[...(run.changes||[])]:[];

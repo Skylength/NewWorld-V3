@@ -1,5 +1,5 @@
 let projections;
-try { projections = await import('./debug-data.js'); }
+try { const modules = await Promise.all([import('./debug-data.js'), import('./prompt-diff.js')]); projections = Object.assign({}, ...modules); }
 catch {
   const fallback = document.createElement('main'); fallback.className = 'startup-fallback';
   const title = document.createElement('h1'); title.textContent = '工作台资源未能加载';
@@ -8,14 +8,14 @@ catch {
   const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'button secondary'; retry.textContent = '刷新重试'; retry.addEventListener('click', () => location.reload()); fallback.append(title, copy, link, retry); document.body.replaceChildren(fallback);
 }
 if (projections) initialize(projections);
-function initialize({ deriveStages, buildTimeline, contextBreakdown, compareContexts, runOutcome, filterRuns, runMetrics }) {
+function initialize({ deriveStages, buildTimeline, contextBreakdown, compareContexts, runOutcome, filterRuns, runMetrics, actualRequest, promptBaseline, promptDiff, unifiedPromptDiff }) {
   const $ = selector => document.querySelector(selector);
   const statuses = { running: '运行中', completed: '已提交', failed: '失败', cancelled: '已取消', pending: '未执行', unknown: '未记录' };
   const stageStatuses = { ...statuses, completed: '已完成' };
   const roles = { structure: '结构判断', text: '文本叙述' };
   const kinds = { system: '系统指令', world: '世界核心', location: '位置背景', related: '相关资料', history: '近期经历', registry: '地点目录', framing: '消息结构' };
   const changeNames = { created: '新增区域', enriched: '补充细节', state: '状态变化', moved: '位置迁移' };
-  const state = { view: null, saves: [], runId: null, follow: true, tab: 'overview', stage: null, contextMode: 'structure', segment: null, changeRegion: null, regionId: null, busy: false, cancelBusy: false, connected: false, refreshPromise: null, timer: null, toastTimer: null, evidence: '', mode: location.hash === '#play' ? 'play' : 'debug' };
+  const state = { view: null, saves: [], runId: null, follow: true, tab: 'overview', stage: null, contextMode: 'structure', segment: null, changeRegion: null, regionId: null, mapRegionId: null, diffRole: 'structure', diffBaseline: 'previous', busy: false, cancelBusy: false, connected: false, refreshPromise: null, timer: null, toastTimer: null, evidence: '', panel: null, mode: location.hash === '#debug' ? 'debug' : 'play' };
   const el = (tag, cls, text) => { const item = document.createElement(tag); if (cls) item.className = cls; if (text != null) item.textContent = String(text); return item; };
   const btn = (text, cls, handler) => { const item = el('button', cls, text); item.type = 'button'; if (text) item.dataset.focusKey = text; item.addEventListener('click', handler); return item; };
   const num = value => typeof value === 'number' ? value.toLocaleString('zh-CN') : '未报告';
@@ -46,11 +46,11 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
   function actionError(message = '') { $('#action-error').textContent = message; $('#action-error').hidden = !message; if (message && state.mode !== 'play') toast(message); }
   async function copy(value) { try { await navigator.clipboard.writeText(value); toast('已复制'); } catch { toast('浏览器未允许复制，可展开原始证据手动选择。'); } }
   async function api(path, payload) { const response = await fetch(path, payload === undefined ? { cache: 'no-store' } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || `请求失败（HTTP ${response.status}）`); return data; }
-  function mode() { state.mode = location.hash === '#play' ? 'play' : 'debug'; $('#play-page').hidden = state.mode !== 'play'; $('#debug-page').hidden = state.mode !== 'debug'; ['play', 'debug'].forEach(value => { const link = $(`#mode-${value}`); if (value === state.mode) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); }); document.title = `新世界 · ${state.mode === 'play' ? '探索试玩' : '调试工作台'}`; }
-  function selectRun(id, follow = false) { if (state.tab === 'world') state.tab = 'overview'; state.runId = id; state.follow = follow; $('#follow-latest').checked = follow; state.stage = null; state.segment = null; state.changeRegion = null; renderDebug(); renderRuns(); }
+  function mode() { state.mode = location.hash === '#debug' ? 'debug' : 'play'; document.body.dataset.mode = state.mode; $('#play-page').hidden = state.mode !== 'play'; $('#debug-page').hidden = state.mode !== 'debug'; ['play', 'debug'].forEach(value => { const link = $(`#mode-${value}`); if (value === state.mode) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); }); document.title = `新世界 · ${state.mode === 'play' ? '游玩' : '调试工作台'}`; }
+  function selectRun(id, follow = false) { if (state.tab === 'world') state.tab = 'overview'; state.runId = id; state.follow = follow; $('#follow-latest').checked = follow; state.stage = null; state.segment = null; state.changeRegion = null; state.diffBaseline = 'previous'; renderDebug(); renderRuns(); }
   function selectTab(tab) { state.tab = tab; renderDebug(); }
   function openRun(item, tab = 'overview') { selectRun(item.id); state.tab = tab; location.hash = '#debug'; renderDebug(); }
-  function fillAction(item) { $('#action-input').value = item.action; location.hash = '#play'; mode(); updateInput(); $('#action-input').focus(); toast('行动已填回输入框，尚未发送。'); }
+  function fillAction(item) { location.hash = '#play'; mode(); if (item.intent?.kind === 'travel') { state.mapRegionId = item.intent.destinationId; renderPlayMap(); showPanel('map'); toast('已定位原目的地，请点击地图地点重新前往。'); return; } $('#action-input').value = item.action; $('#action-mode').value = item.intent?.kind === 'explore' ? 'explore' : 'interact'; updateInput(); $('#action-input').focus(); toast('行动已填回输入框，尚未发送。'); }
   function exportRun(item) { const url = URL.createObjectURL(new Blob([JSON.stringify(item, null, 2)], { type: 'application/json' })); const link = el('a'); link.href = url; link.download = `run-${item.id}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
   function renderRuns() {
     if (!state.view) return;
@@ -141,7 +141,7 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
         parent.append(el('p', 'result-brief', committed ? '本次区域变化与玩家叙述已一起保存。' : '候选内容不会在提交前成为世界事实。')); row(parent, '已提交变化', item.changes.length); row(parent, '结束时间', item.finishedAt ? dateTime(item.finishedAt, true) : '尚未结束');
         parent.append(btn('查看世界变化 →', 'button secondary full-width', () => selectTab('changes')), raw('提交变化记录', JSON.stringify(item.changes, null, 2), 'changes'));
       }
-      const metadata = { id: item.id, worldId: item.worldId, baseRevision: item.baseRevision, status: item.status, stage: item.stage, failureStage: item.failureStage, startedAt: item.startedAt, finishedAt: item.finishedAt, durationMs: item.durationMs, modelRequests: item.modelRequests, usage: item.usage }; parent.append(raw('运行元数据', JSON.stringify(metadata, null, 2), 'metadata'));
+      const metadata = { id: item.id, worldId: item.worldId, baseRevision: item.baseRevision, intent: item.intent, sourceRegionId: item.sourceRegionId, status: item.status, stage: item.stage, failureStage: item.failureStage, startedAt: item.startedAt, finishedAt: item.finishedAt, durationMs: item.durationMs, modelRequests: item.modelRequests, usage: item.usage }; parent.append(raw('运行元数据', JSON.stringify(metadata, null, 2), 'metadata'));
     });
   }
   function contextFor(item) { if (state.contextMode === 'preview') return state.view.nextContext; if (state.contextMode === 'text') return item?.calls?.find(value => value.role === 'text')?.context || null; return item?.calls?.find(value => value.role === 'structure')?.context || item?.context || null; }
@@ -158,6 +158,63 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
     if (item && state.contextMode === 'preview') { const diff = compareContexts(item.calls?.find(value => value.role === 'structure')?.context || item.context, context); const changed = diff.filter(value => value.status !== 'unchanged'); const comparison = section('所选结构请求 → 当前预览', '跨时点比较，不能据此归因于某一轮行动。'); const diffList = el('div', 'context-diff-list'); if (!changed.length) diffList.append(el('p', 'hint', '装载模块与内容没有变化。')); changed.forEach(value => { const block = el('div', `context-diff ${value.status}`); block.append(el('span', '', value.status === 'added' ? '+' : value.status === 'removed' ? '−' : '↻'), el('strong', '', value.title), pill({ added: '新增装载', removed: '卸载', changed: '内容更新' }[value.status], value.status)); diffList.append(block); }); comparison.append(diffList); parent.append(comparison); }
     if (!selected) { renderEmptyEvidence(); return; } setEvidence(JSON.stringify({ runId: state.contextMode === 'preview' ? null : item?.id, contextMode: state.contextMode, module: selected }, null, 2));
     paint('#evidence-content', JSON.stringify(['module', state.contextMode, selected, item?.id]), inspector => { evidenceHeader(inspector, selected.label, kinds[selected.kind] || selected.kind); row(inspector, '字符数', num(selected.characters)); row(inspector, '占比', `${selected.percent.toFixed(1)}%`); const why = section('为什么加载'); why.append(el('p', 'result-brief', selected.reason)); inspector.append(why); const excerpt = section('内容速览'); excerpt.append(el('p', 'module-excerpt', selected.text.slice(0, 420) + (selected.text.length > 420 ? '…' : ''))); inspector.append(excerpt, raw('完整片段', selected.text, `module-${selected.id}`), raw('完整系统提示词', context.systemPrompt, 'system'), raw('完整用户输入', context.userPrompt, 'user')); });
+  }
+  function renderPromptDiff(parent) {
+    const item = run();
+    if (!item) { parent.append(empty('尚无请求可比较', '完成一次探索后，在这里查看实际提示词的逐行变化。')); renderEmptyEvidence(); return; }
+    const switcher = el('div', 'view-switcher');
+    for (const [role, label] of [['structure', '结构请求'], ['text', '文本请求']]) {
+      const button = btn(label, '', () => { state.diffRole = role; state.diffBaseline = 'previous'; renderDebug(); });
+      button.dataset.diffRole = role; button.setAttribute('aria-pressed', String(state.diffRole === role)); switcher.append(button);
+    }
+    parent.append(switcher);
+    const after = actualRequest(item, state.diffRole);
+    if (!after) { parent.append(empty('该阶段尚无实际请求', '请求未发送、该阶段未执行，或旧记录不包含此阶段。这里不会使用预览替代真实请求。')); renderEmptyEvidence(); return; }
+    const { candidates, baseline } = promptBaseline(state.view.runs, item, state.diffRole, state.diffBaseline);
+    const label = el('label', 'diff-baseline-label', '对比基线');
+    const picker = el('select'); picker.id = 'diff-baseline'; picker.dataset.focusKey = 'diff-baseline';
+    picker.append(new Option(candidates.length ? '上一条实际请求（同阶段）' : '无历史基线 · 首次请求', 'previous'));
+    for (const candidate of [...candidates].reverse()) picker.append(new Option(`r${candidate.baseRevision} · ${shortId(candidate.id)} · ${statuses[candidate.status]} · ${candidate.action.slice(0, 35)}`, candidate.id));
+    picker.value = candidates.some(candidate => candidate.id === state.diffBaseline) ? state.diffBaseline : 'previous';
+    picker.disabled = !candidates.length; picker.addEventListener('change', () => { state.diffBaseline = picker.value; renderDebug(); }); label.append(picker); parent.append(label);
+    const before = actualRequest(baseline, state.diffRole), files = promptDiff(before, after);
+    const beforeLabel = baseline ? `r${baseline.baseRevision}-${shortId(baseline.id)}` : 'empty-first-request';
+    const afterLabel = `r${item.baseRevision}-${shortId(item.id)}`;
+    const patch = unifiedPromptDiff(files, beforeLabel, afterLabel);
+    const header = el('div', 'prompt-diff-heading');
+    header.append(el('span', 'mono', `${baseline ? beforeLabel : '首次内容（空基线）'} → ${afterLabel}`), el('span', 'diff-added-count', `+${files.reduce((n, file) => n + file.added, 0)}`), el('span', 'diff-removed-count', `−${files.reduce((n, file) => n + file.removed, 0)}`)); parent.append(header);
+    parent.append(el('p', 'view-note', baseline ? '对比两次实际请求的原文。差异包含行动、历史、指令和区域变化；不等于全部由移动引起。失败请求也会如实保留。' : '这是该阶段最早的已保留请求。绿色表示首次提供的内容，不代表此前曾有一条空请求。'));
+    const appendLine = (container, line) => {
+      const node = el('div', `prompt-diff-line ${line.kind}`);
+      node.append(el('span', 'diff-line-number', line.oldLine ?? ''), el('span', 'diff-line-number', line.newLine ?? ''), el('span', 'diff-sign', { added: '+', removed: '−', context: ' ' }[line.kind]), el('code', '', line.text || ' ')); container.append(node);
+    };
+    for (const file of files) {
+      const panel = el('section', 'prompt-diff-file');
+      const title = el('div', 'prompt-diff-file-heading'); title.append(el('strong', '', file.label), el('span', 'mono', `+${file.added} / −${file.removed}`)); panel.append(title);
+      if (file.coarse) panel.append(el('p', 'hint', '变化块较大，按整块删除/新增展示，内容完整保留。'));
+      let i = 0;
+      while (i < file.lines.length) {
+        if (file.lines[i].kind !== 'context') { appendLine(panel, file.lines[i++]); continue; }
+        const start = i; while (i < file.lines.length && file.lines[i].kind === 'context') i++;
+        const count = i - start;
+        if (count <= 8) { for (let k = start; k < i; k++) appendLine(panel, file.lines[k]); continue; }
+        for (let k = start; k < start + 3; k++) appendLine(panel, file.lines[k]);
+        const folded = el('details', 'diff-unchanged'); folded.dataset.detailKey = `diff-${file.key}-${start}`;
+        folded.append(el('summary', '', `展开 ${count - 6} 行未变化内容`));
+        for (let k = start + 3; k < i - 3; k++) appendLine(folded, file.lines[k]); panel.append(folded);
+        for (let k = i - 3; k < i; k++) appendLine(panel, file.lines[k]);
+      }
+      if (!file.lines.length) panel.append(el('p', 'hint', '两边内容均为空。'));
+      parent.append(panel);
+    }
+    setEvidence(patch);
+    paint('#evidence-content', JSON.stringify(['prompt-diff', item.id, baseline?.id, state.diffRole, patch]), inspector => {
+      evidenceHeader(inspector, '请求提示词差异', roles[state.diffRole]);
+      row(inspector, '基线运行', baseline ? shortId(baseline.id) : '无（首次请求）', true);
+      row(inspector, '基线状态', baseline ? statuses[baseline.status] : '空基线');
+      row(inspector, '当前运行', shortId(item.id), true); row(inspector, '当前状态', statuses[item.status]);
+      inspector.append(el('p', 'hint', '红色 − 为删除，绿色 + 为新增。行号分别对应基线与当前请求；内容来自保存的实际模型请求。'), raw('完整统一差异', patch, 'prompt-patch'), raw('当前系统提示词', after.systemPrompt, 'diff-system'), raw('当前用户消息', after.userPrompt, 'diff-user'));
+    });
   }
   function renderChanges(parent) {
     const item = run(); if (!item) { parent.append(empty('尚无世界变化', '探索产生的新增区域、细节补充、状态与位置变化会显示在这里。', true)); renderEmptyEvidence(); return; }
@@ -196,37 +253,151 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
   function renderDebug() {
     if (!state.view) return; renderSummary(); document.querySelectorAll('[data-tab]').forEach(tab => { const active = tab.dataset.tab === state.tab; tab.setAttribute('aria-selected', String(active)); tab.tabIndex = active ? 0 : -1; }); $('#debug-content').setAttribute('aria-labelledby', `tab-${state.tab}`);
     const selected = run(); const tick = selected?.status === 'running' && state.tab === 'overview' ? Date.now() : null;
-    paint('#debug-content', JSON.stringify([state.tab, selected, state.stage, state.contextMode, state.segment, state.changeRegion, state.regionId, state.view.world.revision, state.view.world.id, tick]), parent => ({ overview: renderOverview, context: renderContext, changes: renderChanges, world: renderWorld })[state.tab](parent));
+    paint('#debug-content', JSON.stringify([state.tab, selected, state.stage, state.contextMode, state.segment, state.changeRegion, state.regionId, state.diffRole, state.diffBaseline, state.view.world.revision, state.view.world.id, tick]), parent => ({ overview: renderOverview, context: renderContext, diff: renderPromptDiff, changes: renderChanges, world: renderWorld })[state.tab](parent));
   }
+  function renderPlayMap() {
+    if (!state.view) return;
+    const { world, runs, config } = state.view; const locked = busy() || !state.connected || !config.configured;
+    const active = runs.find(item => item.id === state.view.activeRunId);
+    $('#map-region-count').textContent = `${world.regions.length} 个地点`;
+    $('#explore-region').disabled = busy() || !state.connected || !config.configured;
+    paint('#play-map', JSON.stringify([world.id, world.revision, state.mapRegionId, locked, active?.intent]), parent => {
+      const visited = new Set(world.turns.flatMap(turn => [turn.fromId, turn.toId])); visited.add(world.playerLocationId);
+      const seen = new Set();
+      function addRegion(item, container, depth = 0) {
+        if (seen.has(item.id)) return; seen.add(item.id);
+        const group = el('div', 'map-region-branch'); const card = el('div', `map-region-card ${item.id === world.playerLocationId ? 'current' : ''} ${state.mapRegionId === item.id ? 'inspected' : ''}`);
+        const moving = active?.intent?.kind === 'travel' && active.intent.destinationId === item.id;
+        const move = btn('', 'map-region-target', () => travelTo(item.id)); move.dataset.mapRegion = item.id; move.dataset.focusKey = `map-travel-${item.id}`;
+        move.disabled = locked || item.id === world.playerLocationId; move.setAttribute('aria-label', item.id === world.playerLocationId ? `${item.name}，当前所在` : `前往${item.name}`);
+        move.append(el('span', 'map-region-symbol', item.id === world.playerLocationId ? '●' : '◇'), el('strong', '', item.name), el('span', 'map-region-caption', moving ? '正在前往…' : item.id === world.playerLocationId ? '当前所在' : visited.has(item.id) ? '再次前往 ↗' : '前往 ↗'));
+        const detail = btn('详情', 'map-region-inspect', () => { state.mapRegionId = item.id; renderPlayMap(); }); detail.setAttribute('aria-label', `查看${item.name}详情`); detail.dataset.focusKey = `map-detail-${item.id}`;
+        card.append(move, detail); group.append(card);
+        const children = world.regions.filter(child => child.parentId === item.id);
+        if (children.length) { const branch = el('div', `map-region-children ${depth >= 3 ? 'compact-depth' : ''}`); children.forEach(child => addRegion(child, branch, depth + 1)); group.append(branch); }
+        container.append(group);
+      }
+      world.regions.filter(item => item.parentId === null || !region(item.parentId)).forEach(item => addRegion(item, parent));
+      world.regions.forEach(item => addRegion(item, parent));
+    });
+    const selected = region(state.mapRegionId) || region(world.playerLocationId);
+    paint('#play-region-detail', JSON.stringify([world.id, selected]), parent => {
+      if (!selected) return;
+      parent.append(el('span', 'eyebrow', '地点档案'), el('h3', '', selected.name), el('p', 'hint', regionPath(selected.id).join(' / ')), el('p', 'map-detail-summary', selected.summary));
+      const facts = Object.entries(selected.state); if (facts.length) { const list = el('dl', 'map-state-list'); for (const [key, value] of facts) list.append(el('dt', '', key), el('dd', '', value)); parent.append(list); }
+      if (selected.opportunities.length) { const list = el('ul', 'map-opportunities'); selected.opportunities.slice(0, 3).forEach(value => list.append(el('li', '', value))); parent.append(list); }
+    });
+  }
+  // The play shell consumes generic entries; this adapter owns exploration-specific fields.
+  function playEntries() {
+    const { world, runs } = state.view;
+    const entries = [];
+    if (!world.turns.length) entries.push({ id: 'opening', type: 'narration', text: region(world.playerLocationId)?.summary || '世界正在等待你的第一步。' });
+    const attempts = revision => runs.filter(item => item.baseRevision === revision && item.status !== 'completed').forEach(item => {
+      entries.push({ id: item.id, type: 'attempt', text: item.action, status: item.status, source: item });
+    });
+    attempts(0);
+    world.turns.forEach(turn => {
+      entries.push({ id: turn.id, type: 'turn', action: turn.action, text: turn.narration, caption: regionName(turn.toId), number: turn.number });
+      attempts(turn.number);
+    });
+    return entries;
+  }
+  function scrollLatest() { const scroll = $('#story-scroll'); scroll.scrollTop = scroll.scrollHeight; $('#latest-story').hidden = true; }
   function renderStory() {
-    const { world, runs } = state.view; const scroll = $('#story-scroll'); const atBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 100; const key = JSON.stringify([world, runs.map(item => [item.id, item.status, item.error])]);
-    paint('#story', key, parent => {
-      if (!world.turns.length) { const opening = el('section', 'world-opening'); opening.append(el('span', 'eyebrow', 'YOUR STORY BEGINS'), el('h2', '', '从这里，走向未知。')); paragraphs(opening, region(world.playerLocationId)?.summary); parent.append(opening); }
-      const attempts = revision => runs.filter(item => item.baseRevision === revision && item.status !== 'completed').forEach(item => { const card = el('div', `story-attempt ${item.status}`); card.append(pill(statuses[item.status], item.status), el('p', '', item.action)); if (item.error) card.append(el('p', 'hint', item.error)); card.append(btn('查看运行链路 →', 'button quiet', () => openRun(item))); if (item.status !== 'running') card.append(btn('填回行动', 'button quiet', () => fillAction(item))); parent.append(card); }); attempts(0);
-      world.turns.forEach(turn => { const article = el('article', 'story-turn'); article.dataset.turnId = turn.id; article.append(el('div', 'turn-label', `TURN ${String(turn.number).padStart(2, '0')}`), el('blockquote', 'player-action', turn.action)); const narration = el('div', 'story-narration'); paragraphs(narration, turn.narration); article.append(narration); const footer = el('div', 'story-turn-footer'); footer.append(el('span', '', `${regionName(turn.toId)} · 经过 ${turn.elapsedMinutes} 分钟`)); const trace = runs.find(item => item.status === 'completed' && item.baseRevision === turn.number - 1); if (trace) footer.append(btn('检查这一轮 ↗', 'button quiet', () => openRun(trace))); article.append(footer); parent.append(article); attempts(turn.number); });
-    }); if (atBottom) scroll.scrollTop = scroll.scrollHeight;
+    const entries = playEntries(), scroll = $('#story-scroll');
+    const worldChanged = $('#story').dataset.worldId !== state.view.world.id;
+    const atBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 100;
+    paint('#story', JSON.stringify([state.view.world.id, entries]), parent => {
+      entries.forEach(entry => {
+        const article = el('article', `game-entry ${entry.type}`); article.dataset.entryId = entry.id;
+        if (entry.type === 'turn') {
+          const action = el('div', 'game-player-message'); action.setAttribute('aria-label', '你的行动'); action.append(el('p', '', entry.action));
+          article.append(el('div', 'game-entry-caption', `第 ${entry.number} 段 · ${entry.caption}`), action);
+        }
+        if (entry.type === 'attempt') {
+          article.append(el('div', 'game-player-message', entry.text), el('p', 'hint', entry.status === 'running' ? '世界正在回应…' : entry.status === 'failed' ? '这次行动未完成，世界保持原状。' : '已停止生成，世界保持原状。'));
+          if (entry.status !== 'running') article.append(btn('修改后重试', 'button secondary', () => fillAction(entry.source)), btn('查看原因', 'button quiet', () => openRun(entry.source)));
+        } else { const narrative = el('div', 'game-narration'); paragraphs(narrative, entry.text); article.append(narrative); }
+        parent.append(article);
+      });
+    });
+    $('#story').dataset.worldId = state.view.world.id;
+    if (worldChanged || atBottom) scrollLatest();
+    else $('#latest-story').hidden = false;
+  }
+  const playPanels = {
+    map: { title: '世界地图', id: '#panel-map' },
+    scene: { title: '当前场景', id: '#panel-scene' },
+    journal: { title: '旅程日志', id: '#panel-journal' },
+  };
+  let panelOpener = null;
+  function showPanel(name) {
+    if (name && !playPanels[name]) return;
+    if (name) panelOpener = document.activeElement;
+    state.panel = name; $('#game-panel').hidden = !name;
+    $('#play-page').classList.toggle('panel-open', Boolean(name));
+    Object.entries(playPanels).forEach(([key, value]) => { $(value.id).hidden = key !== name; });
+    document.querySelectorAll('[data-panel]').forEach(button => button.setAttribute('aria-expanded', String(button.dataset.panel === name)));
+    if (name) { $('#game-panel-title').textContent = playPanels[name].title; renderPlayPanels(); $('#close-game-panel').focus(); }
+    else if (panelOpener?.isConnected) panelOpener.focus();
+  }
+  function renderPlayPanels() {
+    if (!state.view) return;
+    const world = state.view.world, current = region(world.playerLocationId);
+    paint('#panel-scene', JSON.stringify([world.id, current]), parent => {
+      parent.append(el('p', 'hint', '你当前所在'), el('h3', '', current?.name || '未知地点'));
+      paragraphs(parent, current?.summary);
+      if (current?.details.length) { const list = el('ul', 'detail-list'); current.details.forEach(text => list.append(el('li', '', text))); parent.append(list); }
+      if (current?.opportunities.length) { parent.append(el('h3', '', '可以留意')); const list = el('ul', 'detail-list'); current.opportunities.forEach(text => list.append(el('li', '', text))); parent.append(list); }
+      parent.append(btn('打开地图', 'button secondary', () => showPanel('map')));
+    });
+    paint('#panel-journal', JSON.stringify([world.id, world.turns]), parent => {
+      parent.append(el('h3', '', world.title), el('p', 'hint', '记录已完成的行动。点击回到故事中的那一刻。'));
+      if (!world.turns.length) parent.append(el('p', '', '旅程刚刚开始，还没有完成的行动。'));
+      [...world.turns].reverse().forEach(turn => {
+        const button = btn('', 'journal-entry', () => { showPanel(null); const entry = [...$('#story').children].find(node => node.dataset.entryId === turn.id); if (entry) { $('#story-scroll').scrollTop += entry.getBoundingClientRect().top - $('#story-scroll').getBoundingClientRect().top; entry.tabIndex = -1; entry.focus({ preventScroll: true }); } });
+        button.append(el('span', 'hint', `第 ${turn.number} 段 · ${regionName(turn.toId)}`), el('strong', '', turn.action)); parent.append(button);
+      });
+    });
   }
   function updateInput() {
     const configured = Boolean(state.view?.config.configured), locked = busy(); $('#action-input').disabled = !configured || locked; $('#send-action').disabled = !configured || !state.connected || locked || !$('#action-input').value.trim(); $('#send-action').hidden = Boolean(state.view?.activeRunId); $('#cancel-turn').hidden = !state.view?.activeRunId; $('#cancel-turn').disabled = state.cancelBusy || !state.connected; $('#cancel-turn').textContent = state.cancelBusy ? '正在取消…' : '取消生成';
-    $('#character-count').textContent = `${$('#action-input').value.length} / 2000`; $('#new-world').disabled = !state.view || !state.connected || locked; $('#load-save').disabled = !state.view || !state.connected || locked || !$('#save-select').value || $('#save-select').value === state.view.world.id; $('#save-select').disabled = !state.view || locked; document.querySelectorAll('[data-example]').forEach(button => { button.disabled = locked; }); document.querySelectorAll('[data-cancel-run]').forEach(button => { button.disabled = state.cancelBusy || !state.connected; });
+    $('#character-count').textContent = `${$('#action-input').value.length} / 2000`; $('#new-world').disabled = !state.view || !state.connected || locked; $('#load-save').disabled = !state.view || !state.connected || locked || !$('#save-select').value || $('#save-select').value === state.view.world.id; $('#save-select').disabled = !state.view || locked; document.querySelectorAll('[data-cancel-run]').forEach(button => { button.disabled = state.cancelBusy || !state.connected; });
+    $('#action-mode').disabled = locked || !configured;
+    const exploring = $('#action-mode').value === 'explore';
+    $('#action-mode-help').textContent = exploring ? '发送后尝试进入你描述的新地点' : '自由描述对白、行动或想去的地方';
+    $('#exploration-intent').hidden = !exploring; $('#clear-intent').disabled = locked;
+    $('#action-input').placeholder = exploring ? '想探索哪里？例如：前往南疆的一处渡口…' : '说些什么，或描述你想做的事…';
+    renderPlayMap();
   }
   function render(view) {
     const previous = state.view, changedWorld = previous?.world.id !== view.world.id; state.view = view; const input = $('#action-input'); const pending = view.runs.find(item => item.id === input.dataset.pendingRunId);
-    if (pending && pending.status !== 'running') { if (pending.status === 'completed' && input.value.trim() === pending.action) input.value = ''; delete input.dataset.pendingRunId; }
-    if (changedWorld) { state.runId = view.runs.at(-1)?.id || null; state.regionId = view.world.playerLocationId; state.stage = null; state.segment = null; state.changeRegion = null; }
+    if (pending && pending.status !== 'running') { if (pending.status === 'completed' && input.value.trim() === pending.action) { input.value = ''; $('#action-mode').value = 'interact'; } delete input.dataset.pendingRunId; }
+    if (changedWorld) { state.runId = view.runs.at(-1)?.id || null; state.regionId = view.world.playerLocationId; state.mapRegionId = view.world.playerLocationId; state.diffBaseline = 'previous'; state.stage = null; state.segment = null; state.changeRegion = null; }
     else if (state.follow || !view.runs.some(item => item.id === state.runId)) { const latest = view.runs.at(-1)?.id || null; if (state.runId !== latest) { state.stage = null; state.segment = null; state.changeRegion = null; } state.runId = latest; }
+    if (!changedWorld && previous?.world.playerLocationId !== view.world.playerLocationId) state.mapRegionId = view.world.playerLocationId;
     $('#world-title').textContent = view.world.title; $('#save-world-title').textContent = view.world.title; $('#current-location').textContent = regionPath(view.world.playerLocationId).join(' / '); $('#world-clock').textContent = worldTime(view.world.timeMinutes);
     $('#mode-badge').textContent = view.config.mode === 'scripted' ? '脚本演示' : view.config.configured ? '真实模型' : '待配置'; $('#mode-badge').classList.toggle('scripted', view.config.mode === 'scripted'); $('#mode-notice').hidden = view.config.mode !== 'scripted'; $('#mode-notice').textContent = '脚本演示环境 · 使用预设响应验证流程，不代表真实模型生成。'; $('#config-notice').hidden = view.config.configured;
     $('#save-status').textContent = view.activeRunId ? '运行中 · 新变化尚未提交' : `自动保存 · 世界版本 r${view.world.revision}`; $('#connection-status').textContent = '本地已连接'; $('#connection-status').classList.remove('offline'); const active = view.runs.find(item => item.id === view.activeRunId); $('#turn-status').hidden = !active; if (active) $('#turn-status').textContent = `${active.phase || '世界正在回应'} · 可随时取消`;
-    renderRuns(); renderDebug(); renderStory(); updateInput(); if (changedWorld || previous?.world.revision !== view.world.revision) void fetchSaves();
+    $('#play-save-state').hidden = false; $('#play-save-state').textContent = view.activeRunId ? '正在回应…' : '✓ 已保存';
+    renderRuns(); renderDebug(); renderStory(); renderPlayPanels(); updateInput(); if (changedWorld || previous?.world.revision !== view.world.revision) void fetchSaves();
   }
   async function fetchSaves() { try { const data = await api('/api/saves'); const selection = $('#save-select').value; state.saves = data.saves; const select = $('#save-select'); select.replaceChildren(); data.saves.forEach(save => select.append(new Option(`${save.title} · r${save.revision} · ${dateTime(save.updatedAt, true)}`, save.id))); select.value = data.saves.some(save => save.id === selection) ? selection : state.view?.world.id || ''; updateInput(); } catch (error) { toast(`存档列表读取失败：${error.message}`); } }
   async function refresh(fresh = false) {
     if (state.refreshPromise) { await state.refreshPromise; if (!fresh) return; }
-    state.refreshPromise = (async () => { try { const view = await api('/api/state'); state.connected = true; $('#connection-alert').hidden = true; render(view); } catch (error) { state.connected = false; $('#connection-alert').textContent = `无法连接本地服务：${error.message}。正在重连，输入与已读取的记录会保留。`; $('#connection-alert').hidden = false; $('#connection-status').textContent = '连接中断'; $('#connection-status').classList.add('offline'); updateInput(); } })(); try { await state.refreshPromise; } finally { state.refreshPromise = null; }
+    state.refreshPromise = (async () => { try { const view = await api('/api/state'); state.connected = true; $('#connection-alert').hidden = true; render(view); } catch (error) { state.connected = false; $('#connection-alert').textContent = `无法连接本地服务：${error.message}。正在重连，输入与已读取的记录会保留。`; $('#connection-alert').hidden = false; $('#play-save-state').textContent = '连接中断'; $('#connection-status').textContent = '连接中断'; $('#connection-status').classList.add('offline'); updateInput(); } })(); try { await state.refreshPromise; } finally { state.refreshPromise = null; }
   }
   function poll() { clearTimeout(state.timer); state.timer = setTimeout(async () => { await refresh(); poll(); }, state.view?.activeRunId ? 800 : 3000); }
-  async function submitAction(event) { event.preventDefault(); const action = $('#action-input').value.trim(); if (!action || busy() || !state.connected || !state.view?.config.configured) return; state.busy = true; actionError(); updateInput(); try { const result = await api('/api/turn', { action }); $('#action-input').dataset.pendingRunId = result.runId; state.view.activeRunId = result.runId; if (state.follow) { state.runId = result.runId; state.stage = null; } await refresh(true); } catch (error) { actionError(error.message); } finally { state.busy = false; updateInput(); poll(); } }
+  async function submitAction(event) { event.preventDefault(); const action = $('#action-input').value.trim(); if (!action || busy() || !state.connected || !state.view?.config.configured) return; state.busy = true; actionError(); updateInput(); try { const result = await api('/api/turn', { action, mode: $('#action-mode').value }); $('#action-input').dataset.pendingRunId = result.runId; state.view.activeRunId = result.runId; if (state.follow) { state.runId = result.runId; state.stage = null; } await refresh(true); } catch (error) { actionError(error.message); } finally { state.busy = false; updateInput(); poll(); } }
+  async function travelTo(destinationId) {
+    if (busy() || !state.connected || !state.view?.config.configured || destinationId === state.view.world.playerLocationId) return;
+    const payload = { destinationId, worldId: state.view.world.id, baseRevision: state.view.world.revision };
+    state.busy = true; state.mapRegionId = destinationId; actionError(); updateInput();
+    try { const result = await api('/api/travel', payload); state.view.activeRunId = result.runId; if (state.follow) { state.runId = result.runId; state.stage = null; } await refresh(true); }
+    catch (error) { actionError(error.message); await refresh(true); }
+    finally { state.busy = false; updateInput(); poll(); }
+  }
   async function cancelTurn() { if (!state.view?.activeRunId || state.cancelBusy) return; state.cancelBusy = true; updateInput(); try { await api('/api/cancel', {}); await refresh(true); toast('取消已处理，记录已保留。'); } catch (error) { actionError(error.message); } finally { state.cancelBusy = false; updateInput(); } }
   async function changeWorld(path, payload) { if (busy()) return; state.busy = true; actionError(); updateInput(); try { await api(path, payload); $('#action-input').value = ''; delete $('#action-input').dataset.pendingRunId; await refresh(true); await fetchSaves(); $('#save-select').value = state.view.world.id; toast(path === '/api/new' ? '已打开新世界，已有存档保留。' : '已继续所选存档。'); } catch (error) { actionError(error.message); } finally { state.busy = false; updateInput(); } }
   $('#action-form').addEventListener('submit', submitAction); $('#action-input').addEventListener('input', updateInput); $('#action-input').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); $('#action-form').requestSubmit(); } });
@@ -234,7 +405,14 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
   $('#toggle-saves').addEventListener('click', () => { const open = $('#save-drawer').hidden; $('#save-drawer').hidden = !open; $('#toggle-saves').setAttribute('aria-expanded', String(open)); });
   $('#toggle-runs').addEventListener('click', () => { const open = $('#toggle-runs').getAttribute('aria-expanded') !== 'true'; $('#toggle-runs').setAttribute('aria-expanded', String(open)); $('#runs-body').hidden = !open; $('#toggle-runs').textContent = open ? '收起列表' : '选择运行'; });
   $('#run-search').addEventListener('input', renderRuns); $('#run-filter').addEventListener('change', renderRuns); $('#follow-latest').addEventListener('change', () => { state.follow = $('#follow-latest').checked; if (state.follow) selectRun(state.view?.runs.at(-1)?.id || null, true); else renderSummary(); }); $('#copy-evidence').addEventListener('click', () => copy(state.evidence));
-  document.querySelectorAll('[data-example]').forEach(button => button.addEventListener('click', () => { $('#action-input').value = button.dataset.example; updateInput(); $('#action-input').focus(); }));
+  document.querySelectorAll('[data-panel]').forEach(button => button.addEventListener('click', () => showPanel(state.panel === button.dataset.panel ? null : button.dataset.panel)));
+  $('#close-game-panel').addEventListener('click', () => showPanel(null));
+  document.addEventListener('keydown', event => { if (event.key === 'Escape' && state.panel && state.mode === 'play') showPanel(null); });
+  $('#clear-intent').addEventListener('click', () => { $('#action-mode').value = 'interact'; updateInput(); $('#action-input').focus(); });
+  $('#latest-story').addEventListener('click', scrollLatest);
+  $('#story-scroll').addEventListener('scroll', () => { const area = $('#story-scroll'); $('#latest-story').hidden = area.scrollHeight - area.scrollTop - area.clientHeight < 100; });
+  $('#action-mode').addEventListener('change', updateInput);
+  $('#explore-region').addEventListener('click', () => { showPanel(null); $('#action-mode').value = 'explore'; updateInput(); $('#action-input').focus(); });
   document.querySelectorAll('[data-tab]').forEach(button => { button.addEventListener('click', () => selectTab(button.dataset.tab)); button.addEventListener('keydown', event => { const tabs = [...document.querySelectorAll('[data-tab]')], index = tabs.indexOf(button); let next; if (event.key === 'ArrowRight') next = tabs[(index + 1) % tabs.length]; if (event.key === 'ArrowLeft') next = tabs[(index + tabs.length - 1) % tabs.length]; if (event.key === 'Home') next = tabs[0]; if (event.key === 'End') next = tabs.at(-1); if (next) { event.preventDefault(); next.click(); next.focus(); } }); });
   window.addEventListener('hashchange', mode); document.addEventListener('visibilitychange', () => { if (!document.hidden) { void refresh(); poll(); } });
   const compactViewport = window.matchMedia('(max-width: 760px)');

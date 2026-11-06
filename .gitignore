@@ -8,3 +8,6 @@ reports/acceptance/
 reports/exploration/
 data/exploration/
 data/exploration-routed/
+
+data/
+reports/

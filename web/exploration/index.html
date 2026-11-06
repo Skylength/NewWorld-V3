@@ -11,9 +11,9 @@
 </head>
 <body>
   <header class="app-header">
-    <a class="brand" href="#debug" aria-label="新世界调试工作台"><span class="brand-symbol" aria-hidden="true">世</span><span>新世界 <small>OBSERVATORY</small></span></a>
-    <nav class="mode-nav" aria-label="工作模式"><a id="mode-play" href="#play">试玩</a><a id="mode-debug" href="#debug" aria-current="page">调试工作台</a></nav>
-    <div class="header-context"><span id="mode-badge" class="environment-badge">连接中</span><span id="connection-status" class="connection-status">本地服务</span></div>
+    <a class="brand" href="#play" aria-label="新世界首页"><span class="brand-symbol" aria-hidden="true">世</span><span>新世界</span></a>
+    <nav class="mode-nav" aria-label="工作模式"><a id="mode-play" href="#play">游玩</a><a id="mode-debug" href="#debug" aria-current="page">调试</a></nav>
+    <div class="header-context"><span id="play-save-state" hidden>正在读取</span><span id="mode-badge" class="environment-badge">连接中</span><span id="connection-status" class="connection-status">本地服务</span></div>
     <button id="toggle-saves" class="header-button" type="button" aria-expanded="false" aria-controls="save-drawer">存档 <span aria-hidden="true">⌄</span></button>
   </header>
   <div id="connection-alert" class="connection-alert" role="alert" hidden></div>
@@ -25,17 +25,41 @@
     <p class="hint save-explanation">每轮自动保存。新建世界会保留已有存档。</p>
   </section>
 
-  <main id="play-page" class="play-page" aria-label="探索试玩" hidden>
-    <div class="play-topline"><div><span class="eyebrow">EXPLORATION</span><h1 id="world-title">正在打开世界</h1></div><div class="play-location"><strong id="current-location">—</strong><span id="world-clock" class="hint">等待世界状态</span></div></div>
-    <div id="story-scroll" class="story-scroll" tabindex="0" aria-label="游玩叙述，可滚动查看历史"><div id="story" class="story"><div class="empty-state">正在读取这个世界…</div></div></div>
-    <div class="composer-area">
-      <div id="config-notice" class="callout warning" hidden>模型尚未配置。请在本地 .env 中配置凭据与服务地址后重启。默认 luna 判断结构，sol 生成文本。</div>
-      <div id="turn-status" class="turn-status" role="status" aria-live="polite" hidden></div>
-      <div id="action-error" class="callout error" role="alert" hidden></div>
-      <form id="action-form" class="composer"><label class="sr-only" for="action-input">你准备做什么？</label><textarea id="action-input" name="action" rows="3" maxlength="2000" placeholder="去一个未知的地方，或仔细看看眼前的世界…" disabled></textarea><div class="composer-bottom"><span class="hint input-shortcut">Enter 发送 · Shift + Enter 换行</span><span id="character-count" class="hint">0 / 2000</span><button id="cancel-turn" class="button secondary" type="button" hidden>取消生成</button><button id="send-action" class="button primary" type="submit" disabled>行动 ↗</button></div></form>
-      <div class="example-actions"><span class="hint">试着说</span><button type="button" data-example="我准备前往南疆，快进到抵达。">前往南疆</button><button type="button" data-example="我仔细观察周围，寻找此前没有注意到的细节和可以接触的人。">观察周围</button><button type="button" data-example="我在附近一处石墙上刻下一个小小的星形记号。">留下记号</button></div>
-      <div class="play-footnote"><span>区域探索原型 · 完整独立 NPC 模拟尚未接入</span><a href="#debug">查看运行链路 →</a></div>
-    </div>
+  <main id="play-page" class="play-page" aria-label="游玩" hidden>
+    <nav class="game-rail" aria-label="游玩功能">
+      <button type="button" data-panel="map" aria-controls="game-panel" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2Z M9 3v16 M15 5v16"/></svg>地图</button>
+      <button type="button" disabled title="人物功能尚未接入"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-4a6 6 0 0 1 12 0v4 M17 4a3 3 0 0 1 0 6 M18 14a5 5 0 0 1 3 4v3"/></svg>人物<small>待开放</small></button>
+      <button type="button" disabled title="背包功能尚未接入"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="6" width="14" height="16" rx="3"/><path d="M9 6V4a3 3 0 0 1 6 0v2 M5 12h14 M9 16h6"/></svg>背包<small>待开放</small></button>
+      <button type="button" disabled title="技能功能尚未接入"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z"/></svg>技能<small>待开放</small></button>
+      <button type="button" data-panel="journal" aria-controls="game-panel" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5C9 3 5 3 2 4v16c4-1 7-1 10 1 3-2 6-2 10-1V4c-3-1-7-1-10 1v16"/></svg>日志</button>
+    </nav>
+    <section class="game-main" aria-label="故事与行动">
+      <div class="game-scene"><div><span id="world-title" class="hint">正在打开世界</span><strong id="current-location">—</strong></div><span id="world-clock" class="hint">等待世界状态</span><button class="button quiet" type="button" data-panel="scene" aria-controls="game-panel" aria-expanded="false">场景详情 ›</button></div>
+      <div id="story-scroll" class="story-scroll" tabindex="0" aria-label="故事记录"><div id="story" class="story"><div class="empty-state">正在读取这个世界…</div></div></div>
+      <div class="game-compose-wrap">
+        <button id="latest-story" class="button secondary" type="button" hidden>回到最新 ↓</button>
+        <div class="composer-area">
+          <div id="config-notice" class="callout warning" hidden>模型尚未配置，请配置本地服务后继续。</div>
+          <div id="turn-status" class="turn-status" role="status" aria-live="polite" hidden></div>
+          <div id="action-error" class="callout error" role="alert" hidden></div>
+          <form id="action-form" class="composer">
+            <select id="action-mode" aria-label="当前操作类型" hidden><option value="interact">普通行动</option><option value="explore">探索新地点</option></select>
+            <div id="exploration-intent" class="intent-chip" hidden><span>地图行动 · 探索新地点</span><button id="clear-intent" type="button" aria-label="取消探索模式，恢复普通行动">×</button></div>
+            <label class="sr-only" for="action-input">说些什么，或描述你想做的事</label><textarea id="action-input" name="action" rows="2" maxlength="2000" placeholder="说些什么，或描述你想做的事…" disabled></textarea>
+            <div class="composer-bottom"><span id="action-mode-help" class="hint">自由描述对白、行动或想去的地方</span><span id="character-count" class="hint">0 / 2000</span><button id="cancel-turn" class="button secondary" type="button" hidden>停止生成</button><button id="send-action" class="button primary" type="submit" disabled>发送 ↑</button></div>
+          </form>
+          <div class="composer-hint">Enter 发送 · Shift + Enter 换行</div>
+        </div>
+      </div>
+    </section>
+    <aside id="game-panel" class="game-panel" aria-labelledby="game-panel-title" hidden>
+      <header class="game-panel-header"><h2 id="game-panel-title">地图</h2><button id="close-game-panel" type="button" class="button quiet" aria-label="关闭功能面板">关闭 ×</button></header>
+      <div class="game-panel-scroll">
+        <section id="panel-map" hidden><div class="map-panel-heading"><h3>已知地点</h3><span id="map-region-count" class="pill">0 个地点</span></div><p class="hint map-guidance">点击地点前往，详情仅查看。连线表示区域包含关系。</p><div id="play-map" class="play-map" aria-label="已知地点"></div><button id="explore-region" type="button" class="map-explore-button">＋ 探索新地点<span>描述目的地，让世界继续展开</span></button><div id="play-region-detail" class="play-region-detail"></div></section>
+        <section id="panel-scene" hidden></section>
+        <section id="panel-journal" hidden></section>
+      </div>
+    </aside>
   </main>
 
   <main id="debug-page" class="debug-shell" aria-label="调试工作台">
@@ -46,7 +70,7 @@
     </aside>
     <section class="debug-workspace" aria-label="所选运行">
       <header id="run-summary" class="run-summary"><div class="eyebrow">INSPECT RUN</div><h2>正在读取调试信息</h2></header>
-      <div class="workspace-toolbar"><div id="debug-tabs" class="debug-tabs" role="tablist" aria-label="调试视图"><button id="tab-overview" type="button" role="tab" aria-selected="true" aria-controls="debug-content" data-tab="overview">运行链路</button><button id="tab-context" type="button" role="tab" aria-selected="false" aria-controls="debug-content" tabindex="-1" data-tab="context">上下文</button><button id="tab-changes" type="button" role="tab" aria-selected="false" aria-controls="debug-content" tabindex="-1" data-tab="changes">世界变化</button><button id="tab-world" type="button" role="tab" aria-selected="false" aria-controls="debug-content" tabindex="-1" data-tab="world">当前世界</button></div></div>
+      <div class="workspace-toolbar"><div id="debug-tabs" class="debug-tabs" role="tablist" aria-label="调试视图"><button id="tab-overview" type="button" role="tab" aria-selected="true" aria-controls="debug-content" data-tab="overview">运行链路</button><button id="tab-context" type="button" role="tab" aria-selected="false" aria-controls="debug-content" tabindex="-1" data-tab="context">上下文</button><button id="tab-diff" type="button" role="tab" aria-selected="false" aria-controls="debug-content" tabindex="-1" data-tab="diff">提示词差异</button><button id="tab-changes" type="button" role="tab" aria-selected="false" aria-controls="debug-content" tabindex="-1" data-tab="changes">世界变化</button><button id="tab-world" type="button" role="tab" aria-selected="false" aria-controls="debug-content" tabindex="-1" data-tab="world">当前世界</button></div></div>
       <div id="debug-content" class="debug-content" role="tabpanel" aria-labelledby="tab-overview" tabindex="0"></div>
     </section>
     <aside id="evidence-panel" class="evidence-panel" aria-label="证据详情"><div class="evidence-topline"><span class="eyebrow">INSPECTOR</span><button id="copy-evidence" class="button quiet" type="button" disabled>复制证据</button></div><div id="evidence-content" class="evidence-content"><div class="empty-state compact">点击链路中的节点，查看对应证据。</div></div></aside>

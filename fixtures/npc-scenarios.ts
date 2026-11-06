@@ -1,4 +1,4 @@
-import type { ActorContext, ActorRepository, ActorScope, MemoryReader, MemoryHit } from "../src/actors/types.js";
+import type { ActorContext, ActorRepository, ActorScope } from "../src/actors/types.js";
 import { InMemoryMemoryReader, type MemoryEntry } from "../src/memory/in-memory.js";
 
 export interface NpcScenario {
@@ -99,53 +99,4 @@ export function getScenarioMemoryEntries(scenarioName: string): MemoryEntry[] {
     ? memories.filter((entry) => entry.id !== "lin-kept-promise")
     : memories;
   return structuredClone(scenarioMemories);
-}
-
-export interface MemoryReadRecord {
-  scope: ActorScope;
-  query: string;
-  limit: number;
-  hits?: MemoryHit[];
-  error?: string;
-}
-
-export interface ScenarioFixture {
-  scenario: NpcScenario;
-  entries: MemoryEntry[];
-  reads: MemoryReadRecord[];
-  actorRepository: ActorRepository;
-  memoryReader: MemoryReader;
-  forbiddenSnippets: string[];
-  snapshot(): { actor: ActorContext; memories: MemoryEntry[] };
-}
-
-/** A completely fresh actor and memory store for each trial. */
-export function createScenarioFixture(name: string): ScenarioFixture {
-  const scenario = getScenario(name);
-  if (!scenario) throw new Error("Unknown fixture: " + name);
-  const entries = getScenarioMemoryEntries(name);
-  const reader = new InMemoryMemoryReader(entries);
-  const reads: MemoryReadRecord[] = [];
-  return {
-    scenario,
-    entries,
-    reads,
-    actorRepository: createScenarioActorRepository(scenario),
-    memoryReader: {
-      async recall(scope, query, limit, signal) {
-        const record: MemoryReadRecord = { scope: { ...scope }, query, limit };
-        reads.push(record);
-        try {
-          const hits = await reader.recall(scope, query, limit, signal);
-          record.hits = structuredClone(hits);
-          return hits;
-        } catch (error) {
-          record.error = error instanceof Error ? error.message : String(error);
-          throw error;
-        }
-      },
-    },
-    forbiddenSnippets: ["北仓第三块松动的地砖", "巡山队"],
-    snapshot: () => structuredClone({ actor: scenario.actor, memories: entries }),
-  };
 }

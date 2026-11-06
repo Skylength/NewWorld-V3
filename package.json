@@ -11,10 +11,7 @@
     "console": "tsx examples/console.ts",
     "typecheck": "tsc --noEmit",
     "demo": "tsx examples/npc-reply.ts",
-    "test": "tsx --test test/*.test.ts",
-    "acceptance": "tsx examples/acceptance.ts",
-    "acceptance:exploration": "tsx examples/exploration-acceptance.ts",
-    "check": "npm run typecheck && npm test && npm run acceptance -- --mode scripted && npm run acceptance:exploration -- --mode scripted"
+    "check": "npm run typecheck"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "1.1.0",

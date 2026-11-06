@@ -6,7 +6,7 @@ import { buildExplorationContext } from "./context.js";
 import { runWorldModel } from "./model.js";
 import { buildNarrationContext } from "./narration.js";
 import { ExplorationStore } from "./store.js";
-import type { ExplorationContext, ExplorationModelCall, ExplorationRun, ExplorationSave, ExplorationView } from "./types.js";
+import type { ExplorationContext, ExplorationIntent, ExplorationModelCall, ExplorationRun, ExplorationSave, ExplorationView } from "./types.js";
 
 export class ExplorationError extends Error {
   constructor(message: string, readonly statusCode = 400) { super(message); }
@@ -106,14 +106,27 @@ export class ExplorationService {
     const next = this.recover(loaded);
     this.store.save(next); this.store.select(id); this.save = next;
   }
-  startTurn(action: string): string {
+  startTurn(action: string, mode: "interact" | "explore" = "interact"): string {
+    if (mode !== "interact" && mode !== "explore") throw new ExplorationError("无效的行动模式");
+    return this.startOperation(action, { kind: mode });
+  }
+  startTravel(destinationId: string, worldId: string, baseRevision: number): string {
+    this.idle();
+    const world = this.save.world;
+    if (world.id !== worldId || world.revision !== baseRevision) throw new ExplorationError("地图已变化，请刷新后重新选择地点。", 409);
+    const destination = world.regions.find(region => region.id === destinationId);
+    if (!destination) throw new ExplorationError("该地图地点不存在，请刷新地图。", 404);
+    if (destination.id === world.playerLocationId) throw new ExplorationError("你已经在这个地点。");
+    return this.startOperation(`通过地图前往${destination.name}，抵达后观察当地。`, { kind: "travel", destinationId });
+  }
+  private startOperation(action: string, intent: ExplorationIntent): string {
     this.idle();
     action = action.trim();
     if (!action || action.length > 2000) throw new ExplorationError("请输入 1–2000 字的行动。");
     if (!this.configured()) throw new ExplorationError("请在 .env 中配置 LLM_API_KEY；文本默认 sol、结构默认 luna，然后重启服务。", 503);
-    const context = buildExplorationContext(this.save.world, action);
+    const context = buildExplorationContext(this.save.world, action, intent);
     const run: ExplorationRun = {
-      id: randomUUID(), worldId: this.save.world.id, action, baseRevision: this.save.world.revision,
+      id: randomUUID(), worldId: this.save.world.id, action, baseRevision: this.save.world.revision, intent, sourceRegionId: this.save.world.playerLocationId,
       status: "running", phase: "准备上下文", stage: "context", model: this.modelNames().model, calls: [],
       startedAt: new Date().toISOString(), finishedAt: null, durationMs: null,
       modelRequests: 0, context, rawResponse: "", draft: null, changes: [], usage: null, error: null,
@@ -182,6 +195,10 @@ export class ExplorationService {
       const draft = parseWorldTurnDraft(run.rawResponse);
       run.draft = draft;
       if (this.save.world.id !== run.worldId || this.save.world.revision !== run.baseRevision) throw new Error("世界状态已变化，本轮结果未提交。");
+      if (run.intent?.kind === "travel") {
+        if (draft.destinationId !== run.intent.destinationId) throw new Error("模型改变了地图指定的目的地，本轮未提交。");
+        if (draft.createRegions.length || draft.enrichRegions.length) throw new Error("地图转场不能重建或修改已有地点档案，本轮未提交。");
+      }
       const metadata = { id: run.id, action: run.action, createdAt: new Date().toISOString() };
       const result = applyWorldTurn(this.save.world, draft, metadata);
       // Leave room for a subsequent action. Never commit a successful turn that strands the save over the input limit.

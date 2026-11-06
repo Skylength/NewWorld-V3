@@ -38,7 +38,12 @@ export function createExplorationServer(service: ExplorationService) {
         const payload = await body(request);
         if (url.pathname === "/api/turn") {
           if (typeof payload.action !== "string") throw new ExplorationError("缺少行动文本");
-          return json(response, 202, { runId: service.startTurn(payload.action) });
+          if (payload.mode !== undefined && payload.mode !== "interact" && payload.mode !== "explore") throw new ExplorationError("无效的行动模式");
+          return json(response, 202, { runId: service.startTurn(payload.action, payload.mode ?? "interact") });
+        }
+        if (url.pathname === "/api/travel") {
+          if (typeof payload.destinationId !== "string" || typeof payload.worldId !== "string" || typeof payload.baseRevision !== "number" || !Number.isSafeInteger(payload.baseRevision) || payload.baseRevision < 0) throw new ExplorationError("地图迁移需要有效的地点、世界与版本");
+          return json(response, 202, { runId: service.startTravel(payload.destinationId, payload.worldId, payload.baseRevision) });
         }
         if (url.pathname === "/api/cancel") return json(response, 200, { cancelled: service.cancel() });
         if (url.pathname === "/api/new") { service.newWorld(); return json(response, 200, service.getView()); }

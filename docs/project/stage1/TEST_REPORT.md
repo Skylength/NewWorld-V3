@@ -1,5 +1,7 @@
 # Stage 1 测试与验收报告
 
+2026-10-23 测试移除说明：按用户要求删除工程测试、自动验收代码、场景和测试 CI；下文保留删除前的操作说明与历史结果，旧测试命令和裁判配置不再可用。当前 `npm run check` 仅执行类型检查，功能通过已有试玩和演示入口人工验证。
+
 更新：2026-10-13。当前验收对象是“指定 NPC 收到观察 → 按需查询自己的记忆 → 完整回应”。
 
 2026-10-15 配置更新：用户指定文本默认 gpt-6.1-sol、判断/结构默认 gpt-6-luna。当前 CLI 通过统一路由加载默认角色模型与裁判模型；可分别用 LLM_TEXT_MODEL、LLM_STRUCTURE_MODEL、ACCEPTANCE_JUDGE_MODEL 覆盖。下文保留 10 月 13 日历史执行配置与结果，不据此追认新的真实 NPC 验收。
@@ -18,7 +20,7 @@
 
 scripted 的 PASS 标为 `mechanism-only`，语义检查为 `skipped`。本地 HTTP 替身及测试中注入的 live 分支只能证明接线；它们都不能证明真实角色表现。语义裁判仅用于验收，当前产品回应链路没有逐轮裁判。
 
-场景定义位于 [npc-reply.json](../../../acceptance/npc-reply.json)，共享数据位于 [npc-scenarios.ts](../../../fixtures/npc-scenarios.ts)。演示和验收共用定义，每个 trial 独立初始化。当前记忆为预置数据；验收不包含交易执行、记忆写入或世界时间推进。
+场景定义位于 npc-reply.json（`acceptance/npc-reply.json`，已移除），共享数据位于 [npc-scenarios.ts](../../../fixtures/npc-scenarios.ts)。演示和验收共用定义，每个 trial 独立初始化。当前记忆为预置数据；验收不包含交易执行、记忆写入或世界时间推进。
 
 ## 2. 三个场景与判定边界
 
@@ -36,7 +38,7 @@ scripted 的 PASS 标为 `mechanism-only`，语义检查为 `skipped`。本地 H
 
 实际入口为 `examples/acceptance.ts → loadSuite → runAcceptance → runActorReply → Pi Agent → 硬性检查 → 可选裁判 → 报告`。替身只注入 `PiModelRuntime` 模型边界，工具解析、执行和回执仍经过真实 Pi loop。
 
-[checks.ts](../../../src/acceptance/checks.ts) 检查完整回应、fixture 未变更、真实记忆访问作用域与回执来源、预置秘密泄漏、初始请求未预塞私人记忆、调用预算、终止事件和 trace 元数据。秘密文本检测只覆盖 fixture 声明的文本或标记；任意语义泄漏仍需结合场景判断。
+checks.ts（`src/acceptance/checks.ts`，已移除） 检查完整回应、fixture 未变更、真实记忆访问作用域与回执来源、预置秘密泄漏、初始请求未预塞私人记忆、调用预算、终止事件和 trace 元数据。秘密文本检测只覆盖 fixture 声明的文本或标记；任意语义泄漏仍需结合场景判断。
 
 确定性测试覆盖以下边界：
 
@@ -48,7 +50,7 @@ scripted 的 PASS 标为 `mechanism-only`，语义检查为 `skipped`。本地 H
 
 仅硬性检查全部通过时，live 才请求语义裁判。裁判仅接收目标、可见事实、实际 recall 回执、观察和最终回复，不读取模型内部思维。它必须覆盖全部标准并引用真实 evidence ID；无效 JSON、漏项和伪造引用为 ERROR，不能覆盖硬性失败。
 
-[runner.ts](../../../src/acceptance/runner.ts) 默认每次角色运行最多 **4 次模型请求、3 次工具执行、120 秒**，由程序强制执行。[judge.ts](../../../src/acceptance/judge.ts) 每个合格 trial 最多发起一次裁判请求，配置 60 秒超时、4096 输出 token 上限和零重试。
+runner.ts（`src/acceptance/runner.ts`，已移除） 默认每次角色运行最多 **4 次模型请求、3 次工具执行、120 秒**，由程序强制执行。judge.ts（`src/acceptance/judge.ts`，已移除） 每个合格 trial 最多发起一次裁判请求，配置 60 秒超时、4096 输出 token 上限和零重试。
 
 默认三场景各三次最多发起 36 次角色请求及 9 次裁判请求；这是调用数量上限，不是金额上限，也不包含额外的接口探测。应先筛选相关场景并确定 trial 数量；当前没有整套验收的货币预算门禁或历史成本基线。
 
@@ -86,7 +88,7 @@ Ctrl+C 传递取消信号。中断、模型执行错误和裁判协议错误均�
 
 ## 5. CI 使用说明
 
-[acceptance.yml](../../../.github/workflows/acceptance.yml) 在相关源码、fixture、场景、依赖、测试或 workflow 的 push/PR 上运行类型检查、工程测试与 scripted 验收，并上传产物。
+acceptance.yml（`.github/workflows/acceptance.yml`，已移除） 在相关源码、fixture、场景、依赖、测试或 workflow 的 push/PR 上运行类型检查、工程测试与 scripted 验收，并上传产物。
 
 - 自动 live：配置 `secrets.LLM_API_KEY`、`vars.LLM_MODEL`、`vars.ACCEPTANCE_JUDGE_MODEL`，按需配置独立裁判 key / base URL；设置 `vars.LIVE_ACCEPTANCE_ENABLED=true` 后，相关 push 与同仓库 PR 运行 live。
 - 手动 live：`workflow_dispatch` 明确选择 `live=true`；选择 false 不调用真实模型。可指定每场景次数。
