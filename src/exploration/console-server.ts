@@ -13,8 +13,8 @@ export function createConsoleServer(apiUrl: string) {
     || upstream.username || upstream.password || upstream.pathname !== "/" || upstream.search || upstream.hash) {
     throw new Error("工作台 API 必须指向本机 HTTP 服务根地址");
   }
-  const reads = new Set(["/api/state", "/api/saves", "/api/export"]);
-  const writes = new Set(["/api/turn", "/api/travel", "/api/cancel", "/api/new", "/api/load"]);
+  const reads = new Set(["/api/state", "/api/saves", "/api/export", "/api/npcs"]);
+  const writes = new Set(["/api/turn", "/api/travel", "/api/cancel", "/api/new", "/api/load", "/api/npcs"]);
   return createServer((request, response) => {
     void (async () => {
       const host = request.headers.host ?? "";

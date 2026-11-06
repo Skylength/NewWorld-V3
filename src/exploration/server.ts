@@ -29,6 +29,7 @@ export function createExplorationServer(service: ExplorationService) {
       if (origin && origin !== "http://" + host) throw new ExplorationError("不允许跨站请求", 403);
       const url = new URL(request.url ?? "/", "http://" + host);
       if (request.method === "GET" && url.pathname === "/api/state") return json(response, 200, service.getView());
+      if (request.method === "GET" && url.pathname === "/api/npcs") return json(response, 200, service.getNpcView());
       if (request.method === "GET" && url.pathname === "/api/saves") return json(response, 200, { saves: service.listSaves() });
       if (request.method === "GET" && url.pathname === "/api/export") {
         response.setHeader("Content-Disposition", 'attachment; filename="newworld-exploration.json"');
@@ -36,6 +37,10 @@ export function createExplorationServer(service: ExplorationService) {
       }
       if (request.method === "POST") {
         const payload = await body(request);
+        if (url.pathname === "/api/npcs") {
+          try { return json(response, 202, { runId: service.startNpcOperation(payload) }); }
+          catch (error) { if (error instanceof ExplorationError) throw error; throw new ExplorationError(error instanceof Error ? error.message : "人物操作无效"); }
+        }
         if (url.pathname === "/api/turn") {
           if (typeof payload.action !== "string") throw new ExplorationError("缺少行动文本");
           if (payload.mode !== undefined && payload.mode !== "interact" && payload.mode !== "explore") throw new ExplorationError("无效的行动模式");

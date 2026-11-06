@@ -1,3 +1,4 @@
+import { renderNpcPanel } from './npc-panel.js';
 let projections;
 try { const modules = await Promise.all([import('./debug-data.js'), import('./prompt-diff.js')]); projections = Object.assign({}, ...modules); }
 catch {
@@ -297,11 +298,14 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
       entries.push({ id: item.id, type: 'attempt', text: item.action, status: item.status, source: item });
     });
     attempts(0);
+    let elapsed = 0;
     world.turns.forEach(turn => {
-      entries.push({ id: turn.id, type: 'turn', action: turn.action, text: turn.narration, caption: regionName(turn.toId), number: turn.number });
+      elapsed += turn.elapsedMinutes;
+      entries.push({ id: turn.id, type: 'turn', action: turn.action, text: turn.narration, caption: regionName(turn.toId), number: turn.number, time: turn.worldTime ?? elapsed });
       attempts(turn.number);
     });
-    return entries;
+    for (const event of state.view.npcView?.events || []) entries.push({ id: event.id, type: 'npc', text: event.text, time: event.time });
+    return entries.sort((a, b) => (a.time ?? 0) - (b.time ?? 0));
   }
   function scrollLatest() { const scroll = $('#story-scroll'); scroll.scrollTop = scroll.scrollHeight; $('#latest-story').hidden = true; }
   function renderStory() {
@@ -311,6 +315,7 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
     paint('#story', JSON.stringify([state.view.world.id, entries]), parent => {
       entries.forEach(entry => {
         const article = el('article', `game-entry ${entry.type}`); article.dataset.entryId = entry.id;
+        if (entry.type === 'npc') article.append(el('div', 'game-entry-caption', worldTime(entry.time)));
         if (entry.type === 'turn') {
           const action = el('div', 'game-player-message'); action.setAttribute('aria-label', '你的行动'); action.append(el('p', '', entry.action));
           article.append(el('div', 'game-entry-caption', `第 ${entry.number} 段 · ${entry.caption}`), action);
@@ -330,6 +335,7 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
     map: { title: '世界地图', id: '#panel-map' },
     scene: { title: '当前场景', id: '#panel-scene' },
     journal: { title: '旅程日志', id: '#panel-journal' },
+    npcs: { title: '人物与来信', id: '#panel-npcs' },
   };
   let panelOpener = null;
   function showPanel(name) {
@@ -345,6 +351,7 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
   function renderPlayPanels() {
     if (!state.view) return;
     const world = state.view.world, current = region(world.playerLocationId);
+    renderNpcPanel(document.querySelector('#panel-npcs'), state.view, submitNpc, busy());
     paint('#panel-scene', JSON.stringify([world.id, current]), parent => {
       parent.append(el('p', 'hint', '你当前所在'), el('h3', '', current?.name || '未知地点'));
       paragraphs(parent, current?.summary);
@@ -389,6 +396,15 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
     state.refreshPromise = (async () => { try { const view = await api('/api/state'); state.connected = true; $('#connection-alert').hidden = true; render(view); } catch (error) { state.connected = false; $('#connection-alert').textContent = `无法连接本地服务：${error.message}。正在重连，输入与已读取的记录会保留。`; $('#connection-alert').hidden = false; $('#play-save-state').textContent = '连接中断'; $('#connection-status').textContent = '连接中断'; $('#connection-status').classList.add('offline'); updateInput(); } })(); try { await state.refreshPromise; } finally { state.refreshPromise = null; }
   }
   function poll() { clearTimeout(state.timer); state.timer = setTimeout(async () => { await refresh(); poll(); }, state.view?.activeRunId ? 800 : 3000); }
+  async function submitNpc(operation) {
+    if (busy() || !state.connected) return false;
+    state.busy = true; updateInput();
+    try {
+      await api('/api/npcs', { ...operation, commandId: crypto.randomUUID(), worldId: state.view.world.id, baseRevision: state.view.world.revision });
+      await refresh(true); return true;
+    } catch (error) { actionError(error.message); return false; }
+    finally { state.busy = false; renderPlayPanels(); updateInput(); poll(); }
+  }
   async function submitAction(event) { event.preventDefault(); const action = $('#action-input').value.trim(); if (!action || busy() || !state.connected || !state.view?.config.configured) return; state.busy = true; actionError(); updateInput(); try { const result = await api('/api/turn', { action, mode: $('#action-mode').value }); $('#action-input').dataset.pendingRunId = result.runId; state.view.activeRunId = result.runId; if (state.follow) { state.runId = result.runId; state.stage = null; } await refresh(true); } catch (error) { actionError(error.message); } finally { state.busy = false; updateInput(); poll(); } }
   async function travelTo(destinationId) {
     if (busy() || !state.connected || !state.view?.config.configured || destinationId === state.view.world.playerLocationId) return;

@@ -28,7 +28,7 @@
   <main id="play-page" class="play-page" aria-label="游玩" hidden>
     <nav class="game-rail" aria-label="游玩功能">
       <button type="button" data-panel="map" aria-controls="game-panel" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2Z M9 3v16 M15 5v16"/></svg>地图</button>
-      <button type="button" disabled title="人物功能尚未接入"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-4a6 6 0 0 1 12 0v4 M17 4a3 3 0 0 1 0 6 M18 14a5 5 0 0 1 3 4v3"/></svg>人物<small>待开放</small></button>
+      <button type="button" data-panel="npcs" aria-controls="game-panel" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-4a6 6 0 0 1 12 0v4 M17 4a3 3 0 0 1 0 6 M18 14a5 5 0 0 1 3 4v3"/></svg>人物</button>
       <button type="button" disabled title="背包功能尚未接入"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="6" width="14" height="16" rx="3"/><path d="M9 6V4a3 3 0 0 1 6 0v2 M5 12h14 M9 16h6"/></svg>背包<small>待开放</small></button>
       <button type="button" disabled title="技能功能尚未接入"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z"/></svg>技能<small>待开放</small></button>
       <button type="button" data-panel="journal" aria-controls="game-panel" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5C9 3 5 3 2 4v16c4-1 7-1 10 1 3-2 6-2 10-1V4c-3-1-7-1-10 1v16"/></svg>日志</button>
@@ -57,7 +57,7 @@
       <div class="game-panel-scroll">
         <section id="panel-map" hidden><div class="map-panel-heading"><h3>已知地点</h3><span id="map-region-count" class="pill">0 个地点</span></div><p class="hint map-guidance">点击地点前往，详情仅查看。连线表示区域包含关系。</p><div id="play-map" class="play-map" aria-label="已知地点"></div><button id="explore-region" type="button" class="map-explore-button">＋ 探索新地点<span>描述目的地，让世界继续展开</span></button><div id="play-region-detail" class="play-region-detail"></div></section>
         <section id="panel-scene" hidden></section>
-        <section id="panel-journal" hidden></section>
+        <section id="panel-journal" hidden></section><section id="panel-npcs" hidden></section>
       </div>
     </aside>
   </main>

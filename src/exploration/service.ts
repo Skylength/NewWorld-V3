@@ -7,9 +7,19 @@ import { runWorldModel } from "./model.js";
 import { buildNarrationContext } from "./narration.js";
 import { ExplorationStore } from "./store.js";
 import type { ExplorationContext, ExplorationIntent, ExplorationModelCall, ExplorationRun, ExplorationSave, ExplorationView } from "./types.js";
+import { defaultCapabilities } from "../npc/capabilities.js";
+import { advanceNpcs, recoverNpcs } from "../npc/runtime.js";
+import { actor, emit, learnContacts, materialize, playerNpcView, promote, speak, state as npcState, witnesses } from "../npc/state.js";
+import { integer, parseSeed, text as npcText } from "../npc/validation.js";
 
 export class ExplorationError extends Error {
   constructor(message: string, readonly statusCode = 400) { super(message); }
+}
+
+function commandFingerprint(value: unknown): string {
+  if (Array.isArray(value)) return "[" + value.map(commandFingerprint).join(",") + "]";
+  if (value && typeof value === "object") return "{" + Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => JSON.stringify(key) + ":" + commandFingerprint(item)).join(",") + "}";
+  return JSON.stringify(value);
 }
 
 export interface ExplorationServiceOptions {
@@ -23,6 +33,7 @@ export interface ExplorationServiceOptions {
 }
 
 export class ExplorationService {
+  private readonly capabilities = defaultCapabilities();
   private readonly store: ExplorationStore;
   private save: ExplorationSave;
   private active: { runId: string; controller: AbortController; promise: Promise<void> } | null = null;
@@ -38,6 +49,7 @@ export class ExplorationService {
     this.store.select(this.save.world.id);
   }
   private recover(save: ExplorationSave): ExplorationSave {
+    recoverNpcs(save.world);
     for (const run of save.runs) if (run.status === "running") {
       run.status = "failed";
       run.failureStage = run.stage && run.stage !== "done" ? run.stage : "structure";
@@ -73,6 +85,7 @@ export class ExplorationService {
   getView(): ExplorationView {
     return structuredClone({
       ...this.save,
+      npcView: playerNpcView(this.save.world),
       activeRunId: this.active?.runId ?? null,
       nextContext: buildExplorationContext(this.save.world, ""),
       config: {
@@ -83,11 +96,65 @@ export class ExplorationService {
         maxOutputTokens: this.maxOutputTokens,
         structureMaxOutputTokens: this.maxOutputTokens,
         textMaxOutputTokens: 2048,
-        maxModelRequests: 2,
+        maxModelRequests: npcState(this.save.world).actors.some(n => n.mode === "agent") ? 14 : 2,
       },
     });
   }
   exportSave(): ExplorationSave { return structuredClone(this.save); }
+  getNpcView() { return structuredClone({ worldId: this.save.world.id, revision: this.save.world.revision, time: this.save.world.timeMinutes, active: Boolean(this.active), ...playerNpcView(this.save.world) }); }
+  private npcRuntime(): PiModelRuntime {
+    if (this.options.textModelRuntime) return this.options.textModelRuntime;
+    if (!this.options.textModel?.apiKey) throw new ExplorationError("请先配置角色模型", 503);
+    return createPiModel(this.options.textModel);
+  }
+  startNpcOperation(payload: Record<string, unknown>): string {
+    this.idle();
+    const commandId = npcText(payload.commandId, 80);
+    const fingerprint = commandFingerprint(payload);
+    const receipt = npcState(this.save.world).receipts.find(r => r.id === commandId);
+    if (receipt) {
+      if (commandFingerprint(JSON.parse(receipt.fingerprint)) !== fingerprint) throw new ExplorationError("命令ID已用于不同参数", 409);
+      return commandId;
+    }
+    if (payload.worldId !== this.save.world.id || payload.baseRevision !== this.save.world.revision) throw new ExplorationError("世界已变化，请刷新重试", 409);
+    const world = structuredClone(this.save.world);
+    const s = npcState(world);
+    let target = world.timeMinutes;
+    let run = false;
+    if (s.advance && payload.kind !== "continue" && payload.kind !== "stop") throw new ExplorationError("请先继续或停止未完成的时间推进", 409);
+    switch (payload.kind) {
+      case "create": {
+        const seed = parseSeed(payload.seed);
+        if (seed.locationId !== world.playerLocationId) throw new ExplorationError("只能在当前场景创建人物");
+        materialize(world, seed); break;
+      }
+      case "promote": promote(world, npcText(payload.npcId, 80)); run = true; break;
+      case "talk": speak(world, "player", npcText(payload.npcId, 80), npcText(payload.text, 1800)); run = true; break;
+      case "advance": target += integer(payload.minutes, 1, 525600); run = true; break;
+      case "continue": if (!s.advance) throw new ExplorationError("没有待继续的推进"); target = s.advance.target; run = true; break;
+      case "stop": s.advance = null; break;
+      default: throw new ExplorationError("未知人物操作");
+    }
+    // Fail before accepting a command when inference is required but not configured.
+    if (run && s.actors.some(n => n.mode === "agent")) this.npcRuntime();
+    s.receipts.push({ id: commandId, fingerprint });
+    if (run) s.advance = { target, status: "running", reason: null };
+    world.revision++;
+    const next = { ...this.save, world }; this.store.save(next); this.save = next;
+    if (!run) return commandId;
+    const controller = new AbortController();
+    const active = { runId: commandId, controller, promise: Promise.resolve() };
+    this.active = active;
+    active.promise = advanceNpcs(world, target, {
+      registry: this.capabilities, runtime: () => this.npcRuntime(), signal: controller.signal, redact: value => this.redact(value),
+      persist: updated => { const nextSave = { ...this.save, world: structuredClone(updated) }; this.store.save(nextSave); this.save = nextSave; },
+    }).then(() => {}).catch(error => {
+      const failed = structuredClone(this.save);
+      npcState(failed.world).advance = { target, status: "paused", reason: this.redact(error instanceof Error ? error.message : String(error)) };
+      this.store.save(failed); this.save = failed;
+    }).finally(() => { if (this.active === active) this.active = null; });
+    return commandId;
+  }
   listSaves(): ReturnType<ExplorationStore["list"]> { return this.store.list(); }
   newWorld(): void {
     this.idle();
@@ -121,6 +188,7 @@ export class ExplorationService {
   }
   private startOperation(action: string, intent: ExplorationIntent): string {
     this.idle();
+    if (npcState(this.save.world).advance) throw new ExplorationError("NPC 时间推进未完成，请先在人物面板继续", 409);
     action = action.trim();
     if (!action || action.length > 2000) throw new ExplorationError("请输入 1–2000 字的行动。");
     if (!this.configured()) throw new ExplorationError("请在 .env 中配置 LLM_API_KEY；文本默认 sol、结构默认 luna，然后重启服务。", 503);
@@ -143,6 +211,7 @@ export class ExplorationService {
   }
   private async execute(run: ExplorationRun, controller: AbortController): Promise<void> {
     const started = performance.now();
+    const priorNpcRunIds = new Set(npcState(this.save.world).runs.map(r => r.id));
     const perform = async (role: "structure" | "text", context: ExplorationContext, runtime: PiModelRuntime): Promise<string> => {
       if (controller.signal.aborted) throw new Error("运行已取消");
       const remaining = this.timeoutMs - (performance.now() - started);
@@ -212,7 +281,34 @@ export class ExplorationService {
       if (!narration.trim() || narration.length > 6000) throw new Error("文本阶段没有返回长度有效的正文，未提交世界变化。");
       if (/^\s*(\{|\[|```)/.test(narration)) throw new Error("文本阶段返回了结构或代码而非游戏正文，未提交世界变化。");
       run.stage = "commit"; run.phase = "保存正文与世界变化";
-      const finalResult = applyWorldTurn(this.save.world, { ...draft, narration }, metadata);
+      let baseWorld = structuredClone(this.save.world);
+      if (npcState(baseWorld).actors.some(n => n.mode === "agent") || npcState(baseWorld).letters.some(l => l.status === "in_transit")) {
+        run.phase = "推进同一时段的 NPC 活动";
+        const advance = await advanceNpcs(baseWorld, baseWorld.timeMinutes + draft.elapsedMinutes, {
+          registry: this.capabilities, runtime: () => this.npcRuntime(), signal: controller.signal, redact: value => this.redact(value),
+          timeoutMs: this.timeoutMs - (performance.now() - started),
+          // World turns remain all-or-nothing. Only inference receipts survive an uncommitted turn.
+          persist: updated => {
+            const attempts = npcState(updated).runs.filter(r => !priorNpcRunIds.has(r.id));
+            run.npcRunIds = attempts.map(r => r.id);
+            run.modelRequests = (run.calls ?? []).reduce((sum, call) => sum + call.modelRequests, 0) + attempts.reduce((sum, r) => sum + r.requests, 0);
+            run.usage = attempts.every(r => r.inputTokens !== null && r.outputTokens !== null) && (run.calls ?? []).every(c => c.usage !== null)
+              ? { input: (run.calls ?? []).reduce((n, c) => n + c.usage!.input, 0) + attempts.reduce((n, r) => n + r.inputTokens!, 0), output: (run.calls ?? []).reduce((n, c) => n + c.usage!.output, 0) + attempts.reduce((n, r) => n + r.outputTokens!, 0), totalTokens: (run.calls ?? []).reduce((n, c) => n + c.usage!.totalTokens, 0) + attempts.reduce((n, r) => n + r.inputTokens! + r.outputTokens!, 0) } : null;
+            npcState(this.save.world).runs = structuredClone(npcState(updated).runs); this.store.save(this.save);
+          },
+        });
+        if (!advance.done) throw new Error("区域回合未提交：" + npcState(advance.world).advance?.reason + "。可在人物面板分段推进时间。");
+        baseWorld = advance.world;
+      } else baseWorld.timeMinutes += draft.elapsedMinutes;
+      if (controller.signal.aborted || performance.now() - started >= this.timeoutMs) throw new Error("运行取消或超过整轮时间预算，未提交");
+      const finalResult = applyWorldTurn(baseWorld, { ...draft, elapsedMinutes: 0, narration }, metadata);
+      finalResult.world.turns.at(-1)!.elapsedMinutes = draft.elapsedMinutes;
+      finalResult.world.turns.at(-1)!.worldTime = finalResult.world.timeMinutes;
+      for (const npc of npcState(finalResult.world).actors) {
+        learnContacts(finalResult.world, npc);
+      }
+      // Only people actually present at the player's final location receive the visible scene result.
+      if (baseWorld.playerLocationId !== finalResult.world.playerLocationId) emit(finalResult.world, "player", "observation", "玩家抵达此地。", witnesses(finalResult.world, finalResult.world.playerLocationId));
       if (buildExplorationContext(finalResult.world, "").characters > 20_000) throw new Error("最终文本会使下一轮必要上下文过大，本轮未提交。");
       const completed: ExplorationRun = {
         ...run, status: "completed", stage: "done", phase: "已保存", changes: finalResult.changes,
@@ -223,6 +319,10 @@ export class ExplorationService {
       this.store.save(next);
       this.save = next;
     } catch (error) {
+      for (const attempt of npcState(this.save.world).runs) if (!priorNpcRunIds.has(attempt.id)) {
+        attempt.status = controller.signal.aborted ? "cancelled" : "failed";
+        attempt.error = "所属区域回合未提交；保留实际请求记录，不保留推演后果。";
+      }
       run.failureStage = run.stage === "done" ? "commit" : (run.stage ?? "context");
       run.status = controller.signal.aborted ? "cancelled" : "failed";
       run.phase = controller.signal.aborted ? "已取消，未提交" : "失败，未提交";

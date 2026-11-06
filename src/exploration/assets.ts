@@ -6,6 +6,7 @@ const files: Record<string, [string, string]> = {
   "/app.js": ["app.js", "text/javascript"], "/style.css": ["style.css", "text/css"],
   "/debug-data.js": ["debug-data.js", "text/javascript"],
   "/prompt-diff.js": ["prompt-diff.js", "text/javascript"],
+  "/npc-panel.js": ["npc-panel.js", "text/javascript"],
 };
 export async function serveExplorationAsset(pathname: string, response: ServerResponse): Promise<boolean> {
   const asset = Object.hasOwn(files, pathname) ? files[pathname] : undefined;

@@ -30,6 +30,7 @@ export interface RegionEnrichment {
 }
 
 export interface WorldTurnDraft {
+  createNpcs?: import("../npc/types.js").NpcSeed[];
   narration: string;
   elapsedMinutes: number;
   destinationId: string;
@@ -53,6 +54,7 @@ export interface WorldChange {
 }
 
 export interface ExplorationTurn {
+  worldTime?: number;
   id: string;
   number: number;
   action: string;
@@ -66,6 +68,7 @@ export interface ExplorationTurn {
 }
 
 export interface ExplorationWorld {
+  npc?: import("../npc/types.js").NpcState;
   schemaVersion: 1;
   id: string;
   title: string;
@@ -94,6 +97,7 @@ export interface ExplorationContext {
 }
 
 export interface ExplorationRun {
+  npcRunIds?: string[];
   id: string;
   worldId: string;
   action: string;
@@ -138,6 +142,7 @@ export interface ExplorationSave {
 }
 
 export interface ExplorationView extends ExplorationSave {
+  npcView: ReturnType<typeof import("../npc/state.js").playerNpcView>;
   activeRunId: string | null;
   nextContext: ExplorationContext;
   config: {

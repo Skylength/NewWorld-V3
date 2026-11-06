@@ -42,3 +42,6 @@
 - reports/ 下的运行产物和真实 .env 不提交。凭据不得进入 trace、judge packet 或报告。
 
 当前没有自动测试或自动验收 CI；历史文档中的测试命令、套件和裁判配置仅代表当时状态。
+
+## 2026-11-06 NPC core 分支
+用户已授权 NPC core 开发与验证，无需重复确认。人物代码位于 src/npc/，协议/行为/验证沿用 docs/project/stage1/；探索试玩通过人物面板和 /api/npcs 接入。沿用JSON原子快照，勿同时以多个服务写同一存档目录。禁止写测试文件继续适用。master保存基线，feat/world-testing用于世界测试，feat/npc-core独立工作树用于NPC开发。

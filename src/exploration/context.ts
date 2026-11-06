@@ -110,7 +110,10 @@ export function buildExplorationContext(world: ExplorationWorld, action: string,
     : intent.kind === "explore"
       ? "【宿主指定的探索模式】玩家明确选择探索新区域，允许结合本轮输入生成地点、移动并展开落脚点；依然保留已确认事实和玩家控制权。不要把未知地点硬塞成出发地的子区域，空间关系应符合实际描述。"
       : "【自由游玩】根据玩家这次表达的行动判断结果，不要求切换界面模式。明确前往、进入、跟随等移动行动应在既有条件允许时推进：复用已知地点，或按需创建未知地点并保存实际位置。单纯提及、打听、回忆、假设、否定前往或尚未决定不构成移动。只有已成立的阻碍或目的地指代不清时才说明原因、停在合理位置；未知区域尚无档案不是不能前往的理由。传闻不等于已确认事实，但玩家可以动身调查；不要因传闻未经证实而否定明确的调查行程。不要求玩家改用地图或探索按钮，不保证寻宝、战斗等目标必然成功，不替玩家继续作出下一步选择。";
-  const prompt = systemPrompt(world.playerLocationId) + "\n\n" + operation;
+  modules.push({ id: "npc-registry", kind: "registry", title: "人物身份目录", reason: "复用已有身份；独立人物由自己的 Agent 决定行为，目录不代表玩家知晓异地实况", text: JSON.stringify((world.npc?.actors ?? []).map(n => ({ id: n.id, name: n.name, description: n.description, mode: n.mode, locationId: n.locationId }))) });
+  const prompt = systemPrompt(world.playerLocationId) + "\n\n" + operation + `
+【人物固化与自主性】输出额外字段 createNpcs（数组，没有新增时为空）。本轮出现有具体身份、可持续交往的新人物时，最多创建4人，每项严格为 {"id":"人物id","name":"姓名","description":"公开外观与身份","persona":"性格与背景","goals":["目标"],"locationId":"已有或本轮新建地点"}。复用人物目录，不要重复生成已有身份；id不能为player。新人物默认为普通人物，只有玩家可以启用独立Agent。
+目录中mode=agent的人物，其发言、意愿、移动、资源和活动完全由独立运行时决定。你可描述其已给定的公开存在，以及环境发生的变化；不能代替其回答、接受、拒绝、攻击或改变位置，也不能把此类变化藏进区域state/details/events/narration。玩家需要向重要人物说话时，说明可通过人物面板交谈；不要编造回应。普通人物可以由场景主持表现，但已保存身份不能变换。不要把NPC私人背景写成玩家已知秘密。`;
   const userPrompt = [
     "【当前世界快照】" + JSON.stringify({ worldId: world.id, revision: world.revision, timeMinutes: world.timeMinutes, playerLocationId: world.playerLocationId, contextLocationId, intent }),
     ...modules.map((module) => `【${module.kind} / ${module.title}】\n加载原因：${module.reason}\n${module.text}`),

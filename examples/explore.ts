@@ -24,7 +24,7 @@ const server = createExplorationServer(service);
 server.on("error", error => { console.error("探索服务启动失败：" + error.message); process.exitCode = 1; });
 server.listen(port, "127.0.0.1", () => {
   console.log(`NewWorld 动态区域探索：http://127.0.0.1:${port}`);
-  console.log(routes.structure && routes.text ? `结构：${routes.structure.modelId}；文本：${routes.text.modelId}。每次行动最多两次模型请求。` : "模型未配置：请设置 .env 的 LLM_API_KEY 后重启。");
+  console.log(routes.structure && routes.text ? `结构：${routes.structure.modelId}；文本/NPC：${routes.text.modelId}。区域生成最多两次请求；独立NPC按需决策，每次最多两次，整段推进最多六次激活。` : "模型未配置：请设置 .env 的 LLM_API_KEY 后重启。");
 });
 const stop = () => { service.cancel(); server.close(); };
 process.on("SIGINT", stop);
