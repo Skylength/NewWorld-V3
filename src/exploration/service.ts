@@ -1,3 +1,4 @@
+import { deliverDirectorSignals } from "../director/protocol.js";
 import { randomUUID } from "node:crypto";
 import { createPiModel, type ModelConfig } from "../agent/model.js";
 import type { PiModelRuntime } from "../agent/runtime.js";
@@ -9,7 +10,7 @@ import { ExplorationStore } from "./store.js";
 import type { ExplorationContext, ExplorationIntent, ExplorationModelCall, ExplorationRun, ExplorationSave, ExplorationView } from "./types.js";
 import { defaultCapabilities } from "../npc/capabilities.js";
 import { advanceNpcs, recoverNpcs } from "../npc/runtime.js";
-import { actor, emit, learnContacts, materialize, playerNpcView, promote, speak, state as npcState, witnesses } from "../npc/state.js";
+import { actor, emit, learnContacts, materialize, notify, playerNpcView, promote, speak, state as npcState, witnesses } from "../npc/state.js";
 import { integer, parseSeed, text as npcText } from "../npc/validation.js";
 
 export class ExplorationError extends Error {
@@ -226,9 +227,10 @@ export class ExplorationService {
       this.store.save(this.save);
       const stageStarted = performance.now();
       const summarizeUsage = () => {
-        run.modelRequests = run.calls!.reduce((sum, c) => sum + c.modelRequests, 0);
-        run.usage = run.calls!.every(c => c.usage !== null)
-          ? run.calls!.reduce((sum, c) => ({ input: sum.input + c.usage!.input, output: sum.output + c.usage!.output, totalTokens: sum.totalTokens + c.usage!.totalTokens }), { input: 0, output: 0, totalTokens: 0 }) : null;
+        const attempts = npcState(this.save.world).runs.filter(r => run.npcRunIds?.includes(r.id));
+        run.modelRequests = run.calls!.reduce((sum, c) => sum + c.modelRequests, 0) + attempts.reduce((sum, r) => sum + r.requests, 0);
+        run.usage = run.calls!.every(c => c.usage !== null) && attempts.every(r => r.inputTokens !== null && r.outputTokens !== null)
+          ? { input: run.calls!.reduce((n,c) => n+c.usage!.input,0) + attempts.reduce((n,r) => n+r.inputTokens!,0), output: run.calls!.reduce((n,c) => n+c.usage!.output,0) + attempts.reduce((n,r) => n+r.outputTokens!,0), totalTokens: run.calls!.reduce((n,c) => n+c.usage!.totalTokens,0) + attempts.reduce((n,r) => n+r.inputTokens!+r.outputTokens!,0) } : null;
       };
       try {
         const raw = await runWorldModel(context, {
@@ -274,41 +276,57 @@ export class ExplorationService {
       if (buildExplorationContext(result.world, "").characters > 20_000) {
         throw new Error("本轮新增内容会使下一轮必要上下文过大，因此未提交。当前世界仍可继续；请换一个地点或缩小这次探索范围。本版尚未加入长期档案摘要。");
       }
-      const textRuntime = this.options.textModelRuntime ?? createPiModel(this.options.textModel!);
-      const narration = await perform("text", buildNarrationContext(result.world, run.action, draft), textRuntime);
-      if (controller.signal.aborted) throw new Error("运行已取消");
-      if (performance.now() - started >= this.timeoutMs) throw new Error("整轮运行已超过时间预算，未提交世界变化。");
-      if (!narration.trim() || narration.length > 6000) throw new Error("文本阶段没有返回长度有效的正文，未提交世界变化。");
-      if (/^\s*(\{|\[|```)/.test(narration)) throw new Error("文本阶段返回了结构或代码而非游戏正文，未提交世界变化。");
-      run.stage = "commit"; run.phase = "保存正文与世界变化";
+      const budget = { decisions: 0, perActor: new Map<string, number>() };
       let baseWorld = structuredClone(this.save.world);
-      if (npcState(baseWorld).actors.some(n => n.mode === "agent") || npcState(baseWorld).letters.some(l => l.status === "in_transit")) {
-        run.phase = "推进同一时段的 NPC 活动";
-        const advance = await advanceNpcs(baseWorld, baseWorld.timeMinutes + draft.elapsedMinutes, {
-          registry: this.capabilities, runtime: () => this.npcRuntime(), signal: controller.signal, redact: value => this.redact(value),
+      const advanceCandidate = async (candidate: typeof baseWorld, target: number) => {
+        const advance = await advanceNpcs(candidate, target, {
+          budget, registry: this.capabilities, runtime: () => this.npcRuntime(), signal: controller.signal, redact: value => this.redact(value),
           timeoutMs: this.timeoutMs - (performance.now() - started),
-          // World turns remain all-or-nothing. Only inference receipts survive an uncommitted turn.
           persist: updated => {
             const attempts = npcState(updated).runs.filter(r => !priorNpcRunIds.has(r.id));
             run.npcRunIds = attempts.map(r => r.id);
-            run.modelRequests = (run.calls ?? []).reduce((sum, call) => sum + call.modelRequests, 0) + attempts.reduce((sum, r) => sum + r.requests, 0);
-            run.usage = attempts.every(r => r.inputTokens !== null && r.outputTokens !== null) && (run.calls ?? []).every(c => c.usage !== null)
-              ? { input: (run.calls ?? []).reduce((n, c) => n + c.usage!.input, 0) + attempts.reduce((n, r) => n + r.inputTokens!, 0), output: (run.calls ?? []).reduce((n, c) => n + c.usage!.output, 0) + attempts.reduce((n, r) => n + r.outputTokens!, 0), totalTokens: (run.calls ?? []).reduce((n, c) => n + c.usage!.totalTokens, 0) + attempts.reduce((n, r) => n + r.inputTokens! + r.outputTokens!, 0) } : null;
-            npcState(this.save.world).runs = structuredClone(npcState(updated).runs); this.store.save(this.save);
+            run.modelRequests = (run.calls ?? []).reduce((n,c) => n+c.modelRequests,0) + attempts.reduce((n,r) => n+r.requests,0);
+            run.usage = null;
+            npcState(this.save.world).runs = structuredClone(npcState(updated).runs);
+            this.store.save(this.save);
           },
         });
-        if (!advance.done) throw new Error("区域回合未提交：" + npcState(advance.world).advance?.reason + "。可在人物面板分段推进时间。");
-        baseWorld = advance.world;
+        if (!advance.done) throw new Error("区域回合未提交：" + npcState(advance.world).advance?.reason);
+        return advance.world;
+      };
+      const beforeInteractions = (draft.director?.interactions ?? []).filter(interaction =>
+        npcState(baseWorld).actors.some(n => n.id === interaction.targetId && n.locationId === baseWorld.playerLocationId));
+      deliverDirectorSignals(baseWorld, { interactions: beforeInteractions, observations: [] }, run.action);
+      if (npcState(baseWorld).actors.some(n => n.mode === "agent") || npcState(baseWorld).letters.some(l => l.status === "in_transit")) {
+        run.phase = "推进同一时段的 NPC 活动";
+        baseWorld = await advanceCandidate(baseWorld, baseWorld.timeMinutes + draft.elapsedMinutes);
       } else baseWorld.timeMinutes += draft.elapsedMinutes;
       if (controller.signal.aborted || performance.now() - started >= this.timeoutMs) throw new Error("运行取消或超过整轮时间预算，未提交");
-      const finalResult = applyWorldTurn(baseWorld, { ...draft, elapsedMinutes: 0, narration }, metadata);
+      const finalResult = applyWorldTurn(baseWorld, { ...draft, elapsedMinutes: 0 }, metadata);
       finalResult.world.turns.at(-1)!.elapsedMinutes = draft.elapsedMinutes;
       finalResult.world.turns.at(-1)!.worldTime = finalResult.world.timeMinutes;
       for (const npc of npcState(finalResult.world).actors) {
         learnContacts(finalResult.world, npc);
       }
       // Only people actually present at the player's final location receive the visible scene result.
-      if (baseWorld.playerLocationId !== finalResult.world.playerLocationId) emit(finalResult.world, "player", "observation", "玩家抵达此地。", witnesses(finalResult.world, finalResult.world.playerLocationId));
+      if (baseWorld.playerLocationId !== finalResult.world.playerLocationId) {
+        const present = witnesses(finalResult.world, finalResult.world.playerLocationId);
+        emit(finalResult.world, "player", "observation", "玩家抵达此地。", present);
+        for (const id of present) notify(finalResult.world, id, "玩家抵达此地，可以自行决定是否接触");
+      }
+      deliverDirectorSignals(finalResult.world, { interactions: (draft.director?.interactions ?? []).filter(i => !beforeInteractions.includes(i)), observations: draft.director?.observations ?? [] }, run.action);
+      if (npcState(finalResult.world).actors.some(n => n.mode === "agent" && n.pending.length)) {
+        run.phase = "人物正在回应场景";
+        finalResult.world = await advanceCandidate(finalResult.world, finalResult.world.timeMinutes);
+      }
+      const visible = npcState(finalResult.world).events.filter(e => e.witnesses.includes("player") && !npcState(this.save.world).events.some(old => old.id === e.id));
+      const textRuntime = this.options.textModelRuntime ?? createPiModel(this.options.textModel!);
+      const narration = await perform("text", buildNarrationContext(finalResult.world, run.action, draft, visible), textRuntime);
+      if (controller.signal.aborted || performance.now() - started >= this.timeoutMs) throw new Error("运行取消或超过整轮时间预算，未提交");
+      if (!narration.trim() || narration.length > 6000 || /^\s*(\{|\[|```)/.test(narration)) throw new Error("文本阶段没有返回有效正文，本轮未提交");
+      finalResult.world.turns.at(-1)!.narration = narration;
+      finalResult.world.turns.at(-1)!.npcEventIds = visible.map(e => e.id);
+      run.stage = "commit"; run.phase = "保存世界与人物结果";
       if (buildExplorationContext(finalResult.world, "").characters > 20_000) throw new Error("最终文本会使下一轮必要上下文过大，本轮未提交。");
       const completed: ExplorationRun = {
         ...run, status: "completed", stage: "done", phase: "已保存", changes: finalResult.changes,

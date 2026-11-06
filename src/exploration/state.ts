@@ -1,6 +1,7 @@
 import type { ExplorationWorld, Region, RegionCreate, RegionEnrichment, WorldChange, WorldTurnDraft } from "./types.js";
 import { parseSeed } from "../npc/validation.js";
 import { materialize } from "../npc/state.js";
+import { parseDirectorSignals } from "../director/protocol.js";
 
 export { createInitialWorld } from "../../fixtures/exploration.js";
 
@@ -88,13 +89,14 @@ function parseEnrichment(value: unknown, path: string): RegionEnrichment {
 
 function validateDraft(value: unknown): WorldTurnDraft {
   const incoming = object(value, "draft");
-  const { createNpcs, ...base } = incoming;
+  const { createNpcs, director, ...base } = incoming;
   const data = fields(base, "draft", ["narration", "elapsedMinutes", "destinationId", "createRegions", "enrichRegions", "events"]);
   if (typeof data.elapsedMinutes !== "number" || !Number.isInteger(data.elapsedMinutes) || data.elapsedMinutes < 0 || data.elapsedMinutes > 525600) {
     fail("draft.elapsedMinutes", "必须是 0–525600 之间的整数");
   }
   return {
     createNpcs: createNpcs === undefined ? [] : list(createNpcs, "draft.createNpcs", 4, v => parseSeed(v)),
+    director: parseDirectorSignals(director),
     narration: string(data.narration, "draft.narration", 6000),
     elapsedMinutes: data.elapsedMinutes,
     destinationId: id(data.destinationId, "draft.destinationId"),

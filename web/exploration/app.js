@@ -294,17 +294,18 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
     const { world, runs } = state.view;
     const entries = [];
     if (!world.turns.length) entries.push({ id: 'opening', type: 'narration', text: region(world.playerLocationId)?.summary || '世界正在等待你的第一步。' });
-    const attempts = revision => runs.filter(item => item.baseRevision === revision && item.status !== 'completed').forEach(item => {
-      entries.push({ id: item.id, type: 'attempt', text: item.action, status: item.status, source: item });
-    });
-    attempts(0);
     let elapsed = 0;
     world.turns.forEach(turn => {
       elapsed += turn.elapsedMinutes;
       entries.push({ id: turn.id, type: 'turn', action: turn.action, text: turn.narration, caption: regionName(turn.toId), number: turn.number, time: turn.worldTime ?? elapsed });
-      attempts(turn.number);
+
     });
-    for (const event of state.view.npcView?.events || []) entries.push({ id: event.id, type: 'npc', text: event.text, time: event.time });
+    for (const item of runs.filter(item => item.status !== 'completed')) {
+      const followingTurn = world.turns.find(turn => Date.parse(turn.createdAt) > Date.parse(item.startedAt));
+      entries.push({ id: item.id, type: 'attempt', text: item.action, status: item.status, source: item, time: followingTurn?.worldTime ?? world.timeMinutes });
+    }
+    const narratedEvents = new Set(world.turns.flatMap(turn => turn.npcEventIds || []));
+    for (const event of (state.view.npcView?.events || []).filter(event => !narratedEvents.has(event.id))) entries.push({ id: event.id, type: 'npc', text: event.text, time: event.time });
     return entries.sort((a, b) => (a.time ?? 0) - (b.time ?? 0));
   }
   function scrollLatest() { const scroll = $('#story-scroll'); scroll.scrollTop = scroll.scrollHeight; $('#latest-story').hidden = true; }

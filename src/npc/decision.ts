@@ -4,6 +4,7 @@ import type { ExplorationWorld } from "../exploration/types.js";
 import { awaitWithSignal } from "../agent/abort.js";
 import { terminatedStream, type PiModelRuntime } from "../agent/runtime.js";
 import { createRecallTool } from "../memory/recall-tool.js";
+import { relevantMemories } from "../memory/relevance.js";
 import type { CapabilityRegistry } from "./capabilities.js";
 import type { NpcRun } from "./types.js";
 import { actor, state, witnesses } from "./state.js";
@@ -30,8 +31,8 @@ export function decisionContext(world: ExplorationWorld, id: string, registry: C
   const npc = actor(world, id);
   const region = world.regions.find(r => r.id === npc.locationId)!;
   const recent = npc.experiences.slice(-12);
-  const terms = [...npc.goals, ...npc.pending].join(" ");
-  const related = npc.experiences.filter(e => !recent.includes(e) && terms.split(/[\s，。；、]+/u).some(t => t.length > 1 && e.text.includes(t))).slice(-5);
+  const terms = [...npc.goals, ...npc.pending, ...recent.slice(-3).map(e => e.text)].join(" ");
+  const related = relevantMemories(npc.experiences.filter(e => !recent.includes(e)), terms, 5);
   return JSON.stringify({
     worldId: world.id, time: world.timeMinutes,
     self: { id: npc.id, name: npc.name, persona: npc.persona, description: npc.description, condition: npc.condition, locationId: npc.locationId, inventory: npc.inventory, goals: npc.goals, plan: npc.plan, beliefs: npc.beliefs.slice(-12), relations: npc.relations, contacts: npc.contacts },
@@ -53,8 +54,7 @@ export async function runDecision(world: ExplorationWorld, id: string, registry:
   const recall = createRecallTool({ worldId: world.id, actorId: id }, {
     async recall(scope, query, limit) {
       if (scope.worldId !== world.id || scope.actorId !== id) throw new Error("记忆作用域不匹配");
-      const terms = query.split(/[\s，。；、]+/u).filter(Boolean);
-      return npc.experiences.map(e => ({ e, score: terms.reduce((sum, t) => sum + (e.text.includes(t) ? 1 : 0), 0) })).filter(x => x.score > 0).sort((a, b) => b.score - a.score || b.e.time - a.e.time).slice(0, limit).map(({ e }) => ({ id: e.id, text: JSON.stringify(e) }));
+      return relevantMemories(npc.experiences, query, limit).map(e => ({ id: e.id, text: JSON.stringify(e) }));
     },
   });
   const parameters = Type.Object({ id: Type.String() }, { additionalProperties: false });

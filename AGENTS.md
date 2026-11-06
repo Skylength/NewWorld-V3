@@ -45,3 +45,6 @@
 
 ## 2026-11-06 NPC core 分支
 用户已授权 NPC core 开发与验证，无需重复确认。人物代码位于 src/npc/，协议/行为/验证沿用 docs/project/stage1/；探索试玩通过人物面板和 /api/npcs 接入。沿用JSON原子快照，勿同时以多个服务写同一存档目录。禁止写测试文件继续适用。master保存基线，feat/world-testing用于世界测试，feat/npc-core独立工作树用于NPC开发。
+
+## 2026-11-06 Director 集成分支
+用户已授权统筹设计、实现并验证Director、世界区域与NPC联动。feat/director-core工作树使用独立data/director-core存档（4341），不覆盖原分支试玩。Director协议位于src/director/，共同执行仍在exploration/service；当前在场交谈先于本轮时间推进投递，抵达后观察随后投递，NPC前后阶段共享预算。中文检索位于src/memory/relevance.ts。规格沿用exploration和stage1原目录，联合证据以exploration/TEST_REPORT为准。

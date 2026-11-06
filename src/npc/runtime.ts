@@ -7,6 +7,8 @@ import { commitDecision, nextDue, pendingActor, settleDue } from "./engine.js";
 import { runDecision } from "./decision.js";
 import type { NpcRun } from "./types.js";
 
+export interface NpcAdvanceBudget { decisions: number; perActor: Map<string, number> }
+
 /** Each checkpoint is a complete snapshot. A failed inference leaves its input pending. */
 export async function advanceNpcs(initial: ExplorationWorld, target: number, options: {
   registry: CapabilityRegistry;
@@ -15,12 +17,12 @@ export async function advanceNpcs(initial: ExplorationWorld, target: number, opt
   persist: (world: ExplorationWorld) => void;
   redact: (text: string) => string;
   timeoutMs?: number;
+  budget?: NpcAdvanceBudget;
 }): Promise<{ world: ExplorationWorld; done: boolean }> {
   let world = structuredClone(initial);
   if (!Number.isSafeInteger(target) || target < world.timeMinutes || target - world.timeMinutes > 525600) throw new Error("时间推进范围无效");
   state(world).advance = { target, status: "running", reason: null };
-  let decisions = 0;
-  const perActor = new Map<string, number>();
+  const budget = options.budget ?? { decisions: 0, perActor: new Map<string, number>() };
   const started = performance.now();
   const timeoutMs = options.timeoutMs ?? 180000;
   const checkpoint = () => { world.revision++; options.persist(world); };
@@ -34,8 +36,8 @@ export async function advanceNpcs(initial: ExplorationWorld, target: number, opt
     settleDue(world, options.registry);
     const npc = pendingActor(world);
     if (npc) {
-      if (decisions >= 6 || (perActor.get(npc.id) ?? 0) >= 2) return pause("达到本次决策预算，等待继续（最多6次激活，同一人物最多2次）");
-      decisions++; perActor.set(npc.id, (perActor.get(npc.id) ?? 0) + 1);
+      if (budget.decisions >= 6 || (budget.perActor.get(npc.id) ?? 0) >= 2) return pause("达到本次决策预算，等待继续（最多6次激活，同一人物最多2次）");
+      budget.decisions++; budget.perActor.set(npc.id, (budget.perActor.get(npc.id) ?? 0) + 1);
       const run: NpcRun = { id: randomUUID(), npcId: npc.id, time: world.timeMinutes, status: "running", requests: 0, tools: 0, inputTokens: null, outputTokens: null, context: "", raw: "", error: null };
       state(world).runs.push(run);
       state(world).runs = state(world).runs.slice(-100);

@@ -30,6 +30,7 @@ export interface RegionEnrichment {
 }
 
 export interface WorldTurnDraft {
+  director?: import("../director/protocol.js").DirectorSignals;
   createNpcs?: import("../npc/types.js").NpcSeed[];
   narration: string;
   elapsedMinutes: number;
@@ -54,6 +55,7 @@ export interface WorldChange {
 }
 
 export interface ExplorationTurn {
+  npcEventIds?: string[];
   worldTime?: number;
   id: string;
   number: number;
