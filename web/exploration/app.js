@@ -293,20 +293,21 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
   function playEntries() {
     const { world, runs } = state.view;
     const entries = [];
-    if (!world.turns.length) entries.push({ id: 'opening', type: 'narration', text: region(world.playerLocationId)?.summary || '世界正在等待你的第一步。' });
+    const npcEvents = state.view.npcView?.events || [];
+    if (world.opening || !world.turns.length) entries.push({ id: 'opening', type: 'narration', text: world.opening || region(world.playerLocationId)?.summary || '', time: 0, order: -1 });
     let elapsed = 0;
     world.turns.forEach(turn => {
       elapsed += turn.elapsedMinutes;
-      entries.push({ id: turn.id, type: 'turn', action: turn.action, text: turn.narration, caption: regionName(turn.toId), number: turn.number, time: turn.worldTime ?? elapsed });
+      entries.push({ id: turn.id, type: 'turn', action: turn.action, text: turn.narration, caption: regionName(turn.toId), number: turn.number, order: Math.max(-1, ...npcEvents.map((event, index) => turn.npcEventIds?.includes(event.id) ? index : -1)) + 0.5, time: turn.worldTime ?? elapsed });
 
     });
     for (const item of runs.filter(item => item.status !== 'completed')) {
       const followingTurn = world.turns.find(turn => Date.parse(turn.createdAt) > Date.parse(item.startedAt));
       entries.push({ id: item.id, type: 'attempt', text: item.action, status: item.status, source: item, time: followingTurn?.worldTime ?? world.timeMinutes });
     }
-    const narratedEvents = new Set(world.turns.flatMap(turn => turn.npcEventIds || []));
-    for (const event of (state.view.npcView?.events || []).filter(event => !narratedEvents.has(event.id))) entries.push({ id: event.id, type: 'npc', text: event.text, time: event.time });
-    return entries.sort((a, b) => (a.time ?? 0) - (b.time ?? 0));
+    const narratedEvents = new Set([...(world.openingEventIds || []), ...world.turns.flatMap(turn => turn.npcEventIds || [])]);
+    for (const [order, event] of npcEvents.entries()) if (!narratedEvents.has(event.id)) entries.push({ id: event.id, type: 'npc', text: event.text, time: event.time, order });
+    return entries.sort((a, b) => (a.time ?? 0) - (b.time ?? 0) || (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
   }
   function scrollLatest() { const scroll = $('#story-scroll'); scroll.scrollTop = scroll.scrollHeight; $('#latest-story').hidden = true; }
   function renderStory() {
@@ -374,9 +375,9 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
     $('#character-count').textContent = `${$('#action-input').value.length} / 2000`; $('#new-world').disabled = !state.view || !state.connected || locked; $('#load-save').disabled = !state.view || !state.connected || locked || !$('#save-select').value || $('#save-select').value === state.view.world.id; $('#save-select').disabled = !state.view || locked; document.querySelectorAll('[data-cancel-run]').forEach(button => { button.disabled = state.cancelBusy || !state.connected; });
     $('#action-mode').disabled = locked || !configured;
     const exploring = $('#action-mode').value === 'explore';
-    $('#action-mode-help').textContent = exploring ? '发送后尝试进入你描述的新地点' : '自由描述对白、行动或想去的地方';
+    $('#action-mode-help').textContent = '';
     $('#exploration-intent').hidden = !exploring; $('#clear-intent').disabled = locked;
-    $('#action-input').placeholder = exploring ? '想探索哪里？例如：前往南疆的一处渡口…' : '说些什么，或描述你想做的事…';
+    $('#action-input').placeholder = '';
     renderPlayMap();
   }
   function render(view) {
@@ -406,10 +407,10 @@ function initialize({ deriveStages, buildTimeline, contextBreakdown, compareCont
     } catch (error) { actionError(error.message); return false; }
     finally { state.busy = false; renderPlayPanels(); updateInput(); poll(); }
   }
-  async function submitAction(event) { event.preventDefault(); const action = $('#action-input').value.trim(); if (!action || busy() || !state.connected || !state.view?.config.configured) return; state.busy = true; actionError(); updateInput(); try { const result = await api('/api/turn', { action, mode: $('#action-mode').value }); $('#action-input').dataset.pendingRunId = result.runId; state.view.activeRunId = result.runId; if (state.follow) { state.runId = result.runId; state.stage = null; } await refresh(true); } catch (error) { actionError(error.message); } finally { state.busy = false; updateInput(); poll(); } }
+  async function submitAction(event) { event.preventDefault(); const action = $('#action-input').value.trim(); if (!action || busy() || !state.connected || !state.view?.config.configured) return; state.busy = true; actionError(); updateInput(); try { const result = await api('/api/turn', { action, mode: $('#action-mode').value, commandId: crypto.randomUUID(), worldId: state.view.world.id, baseRevision: state.view.world.revision }); $('#action-input').dataset.pendingRunId = result.runId; state.view.activeRunId = result.runId; if (state.follow) { state.runId = result.runId; state.stage = null; } await refresh(true); scrollLatest(); } catch (error) { actionError(error.message); } finally { state.busy = false; updateInput(); poll(); } }
   async function travelTo(destinationId) {
     if (busy() || !state.connected || !state.view?.config.configured || destinationId === state.view.world.playerLocationId) return;
-    const payload = { destinationId, worldId: state.view.world.id, baseRevision: state.view.world.revision };
+    const payload = { commandId: crypto.randomUUID(), destinationId, worldId: state.view.world.id, baseRevision: state.view.world.revision };
     state.busy = true; state.mapRegionId = destinationId; actionError(); updateInput();
     try { const result = await api('/api/travel', payload); state.view.activeRunId = result.runId; if (state.follow) { state.runId = result.runId; state.stage = null; } await refresh(true); }
     catch (error) { actionError(error.message); await refresh(true); }

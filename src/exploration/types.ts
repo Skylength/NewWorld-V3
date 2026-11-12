@@ -30,6 +30,10 @@ export interface RegionEnrichment {
 }
 
 export interface WorldTurnDraft {
+  portrayalChanges?: import("../npc/portrayal.js").PortrayalChange[];
+  commitments?: import("../npc/commitments.js").CommitmentChange[];
+  identityChanges?: import("../npc/identity.js").IdentityChange[];
+  profileChanges?: import("../npc/types.js").ProfileChange[];
   director?: import("../director/protocol.js").DirectorSignals;
   createNpcs?: import("../npc/types.js").NpcSeed[];
   narration: string;
@@ -70,6 +74,9 @@ export interface ExplorationTurn {
 }
 
 export interface ExplorationWorld {
+  commandReceipts?: { commandId: string; fingerprint: string; runId: string }[];
+  opening?: string;
+  openingEventIds?: string[];
   npc?: import("../npc/types.js").NpcState;
   schemaVersion: 1;
   id: string;

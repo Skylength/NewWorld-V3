@@ -1,6 +1,12 @@
 # NewWorld V3 开发约定
 
-接手先读 README、docs/project/README.md 和 docs/project/DEVELOPMENT_SOP.md，再读当前功能的 PRD.md、ARCHITECTURE.md 与已有 TEST_REPORT.md；学习阶段读 LEARNING.md。NPC 阶段目录为 docs/project/stage1/；世界与动态区域设计及已有探索试玩功能统一维护在 docs/project/exploration/，不另建平行规格。项目沟通使用中文，文件使用 UTF-8。
+## 核心开发原则
+
+- 不过度设计：围绕已确认需求实现最直接、清晰的方案，优先复用现有代码；不为假设中的未来需求增加抽象、扩展点、配置或子系统。
+- 不过度防御性编程：保留外部输入、权限、数据一致性等必要校验；不重复检查内部已保证的条件，不为未经证实的风险堆叠兜底、兼容分支或自动重试。
+- 不过度测试：验证规模与改动风险相称，优先使用已有检查和实际运行入口；检查通过且无新问题时不反复扩大验证。下方禁止写测试文件的约束继续适用。
+
+接手先读 README、docs/project/README.md 和 docs/project/DEVELOPMENT_SOP.md，再读当前功能的 PRD.md、ARCHITECTURE.md 与已有 TEST_REPORT.md；学习阶段读 LEARNING.md。现行框架总览统一在 docs/project/exploration/ARCHITECTURE.md；NPC Core及人物形成的当前实现统一位于 docs/project/stage1/ARCHITECTURE.md，未完成验收项见对应TEST_REPORT.md。NPC 阶段目录为 docs/project/stage1/；世界与动态区域设计及已有探索试玩功能统一维护在 docs/project/exploration/，不另建平行规格。项目沟通使用中文，文件使用 UTF-8。
 
 ## 当前主线
 
@@ -16,7 +22,7 @@
 - PRD 维护需求与行为，ARCHITECTURE 维护技术实现，TEST_REPORT 维护实际测试与用户验收，LEARNING 汇总验收后的实际学习。不另建平行背景、需求拆解、开发日志或重复规格。
 - 不提前编造测试报告或学习总结。现有 Stage 1 学习文档仅合并首个已完成能力的既有笔记，不追认整个阶段的验收或学习完成。
 - 区分设计确认、代码实现、测试通过、用户验收和学习总结，保留历史失败记录。项目入口只维护短状态与导航。
-- 世界与动态区域文档 v0.2 按“世界档案、上下文装配、统一生成与更新”整理。设计修订的待审阅状态不抹去既有实现和测试记录，也不证明新增行为已实现或验收；以代码与对应测试证据分别核对。
+- 现行架构以当前工作树为准，说明核对日期与未提交代码边界；待审阅设计单独分节。历史验证记录保留原始结果，不以文档更新追认复验。不要把 v0.2 等历史范围或待实现协议当成现行事实。
 - 新增、合并、删除、移动或重命名文档时同步 README、AGENTS.md 和受影响链接；仓库路径以 V3 根目录为基准。
 
 ## 实现边界
@@ -25,7 +31,7 @@
 
 - 用户指定的默认模型路由：玩家/NPC 文本用 gpt-6.1-sol，判断、结构化更新与语义裁判用 gpt-6-luna；共用已有凭据和端点，角色专用环境变量可覆盖。区域双阶段均成功后才一起提交。
 
-- 已有单个 NPC 的受控回应切片；本次另实现动态区域探索与本地调试控制台，入口 npm run explore。区域世界模型不等于完整独立 NPC 自主模拟；二者不能混报完成。
+- 当前 exploration 已集成 Director 与 src/npc 的计划、通信、事件及按需决策，入口 npm run explore；src/actors 的受控回应 demo 仍是独立旧切片。区域生成、NPC Runtime和正在验证的人物形成增量分别记录状态，不能混报验收完成。
 - Pi 具体模型/流式接口放在 agent 适配层。通过模型边界注入脚本响应时，必须仍经过真实 Pi Agent，不另写假循环。
 - NPC 的世界与角色作用域由宿主固定。模型工具参数不能选择身份；记忆过滤发生在查询边界。
 

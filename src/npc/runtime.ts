@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { validateCharacterRecords } from "./recovery.js";
 import type { ExplorationWorld } from "../exploration/types.js";
 import type { PiModelRuntime } from "../agent/runtime.js";
 import type { CapabilityRegistry } from "./capabilities.js";
@@ -72,10 +73,21 @@ export function recoverNpcs(world: ExplorationWorld): void {
   const s = state(world);
   if (s.version !== 1 || !Array.isArray(s.actors) || !Array.isArray(s.events) || !Array.isArray(s.letters) || !Array.isArray(s.runs) || !Array.isArray(s.receipts)) throw new Error("NPC 存档结构或版本无效，原文件保留");
   if (new Set(s.actors.map(n => n.id)).size !== s.actors.length) throw new Error("NPC 存档包含重复身份");
+  if (s.playerAttention !== undefined) {
+    const ids = s.playerAttention?.trackedCharacterIds;
+    if (!Array.isArray(ids) || ids.some(id => typeof id !== "string" || !s.actors.some(n => n.id === id)) || new Set(ids).size !== ids.length) {
+      throw new Error("人物关注记录无效，原文件保留");
+    }
+  }
   for (const npc of s.actors) {
+    if (npc.identityRevision !== undefined && (!Number.isSafeInteger(npc.identityRevision) || npc.identityRevision < 0)) throw new Error("人物身份版本无效");
+    if (npc.identityHistory !== undefined && (!Array.isArray(npc.identityHistory) || npc.identityHistory.some(h => !h || typeof h.turnId !== "string" || typeof h.previousName !== "string" || typeof h.name !== "string" || !["player_setting", "speech"].includes(h.sourceKind) || typeof h.reference !== "string"))) throw new Error("人物身份历史无效");
+    if (npc.nameKnown !== undefined && typeof npc.nameKnown !== "boolean") throw new Error("人物姓名状态无效");
+    if (npc.aliases !== undefined && (!Array.isArray(npc.aliases) || npc.aliases.some(a => !a || typeof a.text !== "string" || !a.text.trim() || a.text.length > 80 || !world.regions.some(r => r.id === a.scopeId)))) throw new Error("人物称呼记录无效");
     if (!["background", "agent"].includes(npc.mode) || !world.regions.some(r => r.id === npc.locationId) || !Array.isArray(npc.pending) || !Array.isArray(npc.experiences) || !Array.isArray(npc.contacts) || !Array.isArray(npc.knownLocations)) throw new Error("NPC 存档状态无效");
     if (npc.plan && (!Array.isArray(npc.plan.steps) || !Number.isInteger(npc.plan.index) || npc.plan.index < 0 || npc.plan.index > npc.plan.steps.length)) throw new Error("NPC 计划进度无效");
   }
+  validateCharacterRecords(world);
   for (const run of s.runs) if (run.status === "running") {
     run.status = "failed"; run.error = "进程中断；已占请求保留，用量可能未知，未自动重试。";
   }

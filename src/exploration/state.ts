@@ -1,7 +1,11 @@
+import { parsePortrayals } from "../npc/portrayal.js";
+import { parseCommitmentChanges } from "../npc/commitments.js";
 import type { ExplorationWorld, Region, RegionCreate, RegionEnrichment, WorldChange, WorldTurnDraft } from "./types.js";
 import { parseSeed } from "../npc/validation.js";
 import { materialize } from "../npc/state.js";
 import { parseDirectorSignals } from "../director/protocol.js";
+import { applyProfileChanges, parseProfileChanges } from "../npc/profile.js";
+import { parseIdentityChanges } from "../npc/identity.js";
 
 export { createInitialWorld } from "../../fixtures/exploration.js";
 
@@ -89,13 +93,17 @@ function parseEnrichment(value: unknown, path: string): RegionEnrichment {
 
 function validateDraft(value: unknown): WorldTurnDraft {
   const incoming = object(value, "draft");
-  const { createNpcs, director, ...base } = incoming;
+  const { createNpcs, director, profileChanges, identityChanges, commitments, portrayalChanges, ...base } = incoming;
   const data = fields(base, "draft", ["narration", "elapsedMinutes", "destinationId", "createRegions", "enrichRegions", "events"]);
   if (typeof data.elapsedMinutes !== "number" || !Number.isInteger(data.elapsedMinutes) || data.elapsedMinutes < 0 || data.elapsedMinutes > 525600) {
     fail("draft.elapsedMinutes", "必须是 0–525600 之间的整数");
   }
   return {
     createNpcs: createNpcs === undefined ? [] : list(createNpcs, "draft.createNpcs", 4, v => parseSeed(v)),
+    profileChanges: parseProfileChanges(profileChanges),
+    identityChanges: parseIdentityChanges(identityChanges),
+    commitments: parseCommitmentChanges(commitments),
+    portrayalChanges: parsePortrayals(portrayalChanges),
     director: parseDirectorSignals(director),
     narration: string(data.narration, "draft.narration", 6000),
     elapsedMinutes: data.elapsedMinutes,
@@ -222,6 +230,7 @@ export function applyWorldTurn(
   if (!Number.isSafeInteger(result.timeMinutes) || result.timeMinutes < 0) fail("world.timeMinutes", "累计时间超出有效范围");
   result.revision += 1;
   for (const seed of draft.createNpcs ?? []) materialize(result, seed);
+  applyProfileChanges(result, draft.profileChanges ?? [], metadata.id, metadata.action);
   result.turns.push({
     id: metadata.id, number: turnNumber, action: metadata.action.trim(), narration: draft.narration,
     fromId: world.playerLocationId, toId: draft.destinationId, elapsedMinutes: draft.elapsedMinutes,

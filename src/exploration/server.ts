@@ -44,11 +44,11 @@ export function createExplorationServer(service: ExplorationService) {
         if (url.pathname === "/api/turn") {
           if (typeof payload.action !== "string") throw new ExplorationError("缺少行动文本");
           if (payload.mode !== undefined && payload.mode !== "interact" && payload.mode !== "explore") throw new ExplorationError("无效的行动模式");
-          return json(response, 202, { runId: service.startTurn(payload.action, payload.mode ?? "interact") });
+          return json(response, 202, { runId: service.startTurn(payload.action, payload.mode ?? "interact", worldCommand(payload)) });
         }
         if (url.pathname === "/api/travel") {
           if (typeof payload.destinationId !== "string" || typeof payload.worldId !== "string" || typeof payload.baseRevision !== "number" || !Number.isSafeInteger(payload.baseRevision) || payload.baseRevision < 0) throw new ExplorationError("地图迁移需要有效的地点、世界与版本");
-          return json(response, 202, { runId: service.startTravel(payload.destinationId, payload.worldId, payload.baseRevision) });
+          return json(response, 202, { runId: service.startTravel(payload.destinationId, payload.worldId, payload.baseRevision, worldCommand(payload, true)?.commandId) });
         }
         if (url.pathname === "/api/cancel") return json(response, 200, { cancelled: service.cancel() });
         if (url.pathname === "/api/new") { service.newWorld(); return json(response, 200, service.getView()); }
@@ -65,4 +65,10 @@ export function createExplorationServer(service: ExplorationService) {
       });
     });
   });
+}
+
+function worldCommand(payload: Record<string, unknown>, travel = false) {
+  if (payload.commandId === undefined && (travel || (payload.worldId === undefined && payload.baseRevision === undefined))) return undefined;
+  if (typeof payload.commandId !== "string" || !payload.commandId.trim() || payload.commandId.length > 80 || typeof payload.worldId !== "string" || !Number.isSafeInteger(payload.baseRevision) || Number(payload.baseRevision) < 0) throw new ExplorationError("命令需要commandId、worldId和baseRevision");
+  return { commandId: payload.commandId, worldId: payload.worldId, baseRevision: payload.baseRevision as number };
 }

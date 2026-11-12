@@ -1,6 +1,9 @@
 export interface NpcSeed {
+  appearance?: "start" | "arrival";
   id: string;
   name: string;
+  /** name remains the display label when the actual name has not been established. */
+  nameKnown?: boolean;
   description: string;
   persona: string;
   goals: string[];
@@ -48,6 +51,12 @@ export interface Plan {
 }
 
 export interface Npc extends NpcSeed {
+  memorySummary?: import("../memory/summaries.js").MemorySummary;
+  summaryAttempt?: { signature: string; experienceCount: number; requests: number; error: string | null };
+  identityRevision?: number;
+  identityHistory?: { turnId: string; previousName: string; name: string; previousDescription?: string; description?: string; sourceKind: "player_setting" | "speech"; reference: string }[];
+  aliases?: { text: string; scopeId: string }[];
+  profile?: CharacterProfile;
   mode: "background" | "agent";
   condition: string;
   inventory: Record<string, number>;
@@ -61,7 +70,33 @@ export interface Npc extends NpcSeed {
   pending: string[];
 }
 
+export interface ProfileFact {
+  id: string;
+  topic: string;
+  text: string;
+  source: { kind: "player_setting" | "world_creation" | "executed_event"; turnId: string; reference: string };
+  supersedesId: string | null;
+  status: "active" | "superseded";
+}
+
+export interface CharacterProfile {
+  revision: number;
+  facts: ProfileFact[];
+}
+
+export interface ProfileChange {
+  npcId: string;
+  expectedRevision: number;
+  topic: string;
+  text: string;
+  sourceKind: ProfileFact["source"]["kind"];
+  reference: string;
+  supersedesId: string | null;
+}
+
 export interface NpcEvent {
+  completedAction?: boolean;
+  speech?: { targetId: string; text: string };
   id: string;
   time: number;
   kind: Experience["kind"];
@@ -83,6 +118,7 @@ export interface Letter {
 }
 
 export interface NpcDecision {
+  commitments?: import("./commitments.js").CommitmentChange[];
   speech: { targetId: string; text: string } | null;
   beliefs: Belief[];
   relations: Relation[];
@@ -93,6 +129,10 @@ export interface NpcDecision {
 }
 
 export interface NpcRun {
+  kind?: "summary";
+  startedAt?: string;
+  finishedAt?: string;
+  durationMs?: number;
   id: string;
   npcId: string;
   time: number;
@@ -107,7 +147,10 @@ export interface NpcRun {
 }
 
 export interface NpcState {
+  commitments?: import("./commitments.js").Commitment[];
   version: 1;
+  /** Player attention is independent of whether a character runs autonomously. */
+  playerAttention?: { trackedCharacterIds: string[] };
   actors: Npc[];
   events: NpcEvent[];
   letters: Letter[];

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ExplorationWorld } from "../exploration/types.js";
 import type { Npc, NpcSeed, NpcState, NpcEvent } from "./types.js";
+import { visibleCommitments } from "./commitments.js";
 
 export function state(world: ExplorationWorld): NpcState {
   return world.npc ??= { version: 1, actors: [], events: [], letters: [], playerInventory: {}, runs: [], advance: null, receipts: [] };
@@ -49,8 +50,10 @@ export function materialize(world: ExplorationWorld, seed: NpcSeed): Npc {
   const s = state(world);
   if (s.actors.length >= 100) throw new Error("本地世界最多保存 100 位人物");
   if (!world.regions.some(r => r.id === seed.locationId)) throw new Error("人物所在地不存在");
-  if (s.actors.some(n => n.id === seed.id || (n.name.normalize("NFKC") === seed.name.normalize("NFKC") && n.locationId === seed.locationId))) throw new Error("人物已存在，请复用原身份");
-  const npc: Npc = { ...seed, mode: "background", condition: "正常", inventory: {}, experiences: [], beliefs: [], relations: [], knownLocations: [seed.locationId], contacts: [], plan: null, wakeAt: null, pending: [] };
+  if (s.actors.some(n => n.id === seed.id)) throw new Error("人物ID已存在，请复用原身份");
+  const { appearance: _appearance, ...characterSeed } = seed;
+  const npc: Npc = { ...characterSeed, mode: "background", condition: "正常", inventory: {}, experiences: [], beliefs: [], relations: [], knownLocations: [seed.locationId], contacts: [], plan: null, wakeAt: null, pending: [] };
+  npc.aliases = [{ text: seed.name, scopeId: seed.locationId }];
   s.actors.push(npc);
   for (const n of s.actors.filter(n => n.locationId === seed.locationId)) learnContacts(world, n);
   emit(world, npc.id, "observation", `${npc.name}在${world.regions.find(r => r.id === npc.locationId)!.name}出现。${npc.description}`, witnesses(world, npc.locationId));
@@ -63,6 +66,18 @@ export function promote(world: ExplorationWorld, id: string): void {
   npc.mode = "agent";
   npc.pending.push("开始根据当前处境安排自己的活动");
   learnContacts(world, npc);
+}
+/** Attention changes neither character identity nor world events/time. */
+export function trackCharacter(world: ExplorationWorld, id: string, tracked: boolean): void {
+  const npc = actor(world, id);
+  const s = state(world);
+  const encountered = npc.locationId === world.playerLocationId
+    || s.events.some(e => e.actorId === id && e.witnesses.includes("player"));
+  if (!encountered) throw new Error("只能关注已经接触的人物");
+  const attention = s.playerAttention ??= { trackedCharacterIds: [] };
+  if (tracked) {
+    if (!attention.trackedCharacterIds.includes(id)) attention.trackedCharacterIds.push(id);
+  } else attention.trackedCharacterIds = attention.trackedCharacterIds.filter(value => value !== id);
 }
 export function notify(world: ExplorationWorld, targetId: string, reason: string): void {
   if (targetId === "player") return;
@@ -77,7 +92,8 @@ export function notify(world: ExplorationWorld, targetId: string, reason: string
 export function speak(world: ExplorationWorld, fromId: string, targetId: string, text: string): void {
   if (fromId === targetId || location(world, fromId) !== location(world, targetId)) throw new Error("当面交谈需要目标在场且不是自己");
   const name = fromId === "player" ? "玩家" : actor(world, fromId).name;
-  emit(world, fromId, "message", `${name}对${targetId === "player" ? "玩家" : actor(world, targetId).name}说：${text}`, witnesses(world, location(world, fromId)));
+  const event = emit(world, fromId, "message", `${name}对${targetId === "player" ? "玩家" : actor(world, targetId).name}说：${text}`, witnesses(world, location(world, fromId)));
+  event.speech = { targetId, text };
   notify(world, targetId, "收到当面交谈，请自行决定如何回应");
 }
 
@@ -88,11 +104,14 @@ export function playerNpcView(world: ExplorationWorld) {
   return {
     actors: s.actors.filter(n => observed.some(e => e.actorId === n.id) || n.locationId === world.playerLocationId).map(n => ({
       id: n.id, name: n.name, description: n.description, mode: n.mode,
+      nameKnown: n.nameKnown !== false,
+      tracked: s.playerAttention?.trackedCharacterIds.includes(n.id) ?? false,
       present: n.locationId === world.playerLocationId,
       locationId: n.locationId === world.playerLocationId ? n.locationId : null,
     })),
     events: observed, advance: s.advance,
+    commitments: visibleCommitments(world, "player"),
     letters: s.letters.filter(l => (l.toId === "player" && l.status === "delivered") || l.fromId === "player"),
-    runs: s.runs.slice(-12).map(({ id, npcId, time, status, requests, tools, error }) => ({ id, npcId, time, status, requests, tools, error })),
+    runs: s.runs.slice(-12).map(({ id, kind, npcId, time, status, requests, tools, error }) => ({ id, kind, npcId, time, status, requests, tools, error })),
   };
 }

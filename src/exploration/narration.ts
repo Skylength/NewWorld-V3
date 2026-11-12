@@ -15,6 +15,7 @@ export function buildNarrationContext(world: ExplorationWorld, action: string, d
     ...regions.map(r => ({ id: "text-location:" + r.id, kind: "location" as const, title: r.name, reason: "行动结果中的所在地", text: JSON.stringify({ id: r.id, name: r.name, summary: r.summary, details: r.details, state: r.state, opportunities: r.opportunities }) })),
   ];
   const systemPrompt = [
+    "时间按已给定elapsedMinutes表达，优先直接使用分钟，不自行改变耗时。1小时=60分钟，1时辰=120分钟，半个时辰=60分钟；30分钟不能写成半个时辰。",
     "你负责文字 RP 中玩家最终看到的中文叙述。世界事实与独立人物实际结果已由前序阶段提供并经过程序检查；你只负责表达，不重新判断行动或修改世界。",
     "忠实呈现本轮结果简述、事件与抵达地点。可以改善语言、节奏和现场感，但不得新增已发生的行动、人物、物品、地点、设施、线索或状态变化，不改变成功/失败、耗时和位置。不把背景线索写成玩家已经执行的行动。",
     "独立人物实际执行结果优先于Director的事前提要；提要若称人物尚未回应或没有变化，以实际事件更正。NPC对白按其原话引用，不改变声线、态度与承诺；不根据姓名推断未提供的性别，不重复呈现同一对白。",

@@ -1,3 +1,4 @@
+import { applyCommitmentChanges } from "./commitments.js";
 import { randomUUID } from "node:crypto";
 import type { ExplorationWorld } from "../exploration/types.js";
 import type { Npc, NpcDecision } from "./types.js";
@@ -30,7 +31,9 @@ export function executePlan(world: ExplorationWorld, npc: Npc, registry: Capabil
       if (plan.dueAt > world.timeMinutes) return;
       // Conditions are rechecked against the current shared world, not the original decision.
       capability.duration({ world, npc }, step.args);
+      const firstEvent = state(world).events.length;
       capability.execute({ world, npc }, step.args);
+      for (const event of state(world).events.slice(firstEvent)) if (event.kind === "action") event.completedAction = true;
       plan.index++; plan.dueAt = null;
     } catch (error) { stopPlan(world, npc, error); return; }
   }
@@ -39,9 +42,8 @@ export function executePlan(world: ExplorationWorld, npc: Npc, registry: Capabil
   if (npc.wakeAt === null) npc.pending.push("当前方案已经完成，需要安排接下来做什么");
 }
 
-export function commitDecision(world: ExplorationWorld, id: string, decision: NpcDecision, registry: CapabilityRegistry): void {
+export function commitCognition(world: ExplorationWorld, id: string, decision: Pick<NpcDecision, "beliefs" | "relations">): void {
   const npc = actor(world, id);
-  if (npc.mode !== "agent") throw new Error("普通人物不能运行独立 Agent");
   const known = new Set(npc.experiences.map(e => e.id));
   for (const b of [...decision.beliefs, ...decision.relations]) {
     if (!b.evidenceIds.length || b.evidenceIds.some(e => !known.has(e))) throw new Error("认知修订必须引用自己的真实经历");
@@ -50,15 +52,21 @@ export function commitDecision(world: ExplorationWorld, id: string, decision: Np
     if (r.targetId === id || !npc.contacts.some(c => c.id === r.targetId)) throw new Error("不能修改未知对象的关系");
   }
   if (new Set(decision.relations.map(r => r.targetId)).size !== decision.relations.length) throw new Error("同轮不能重复修订同一关系");
-  for (const step of decision.plan?.steps ?? []) registry.get(step);
-  // Validate communication before applying private revisions; host also commits a clone atomically.
-  if (decision.speech && location(world, decision.speech.targetId) !== npc.locationId) throw new Error("对白对象不在场，请使用通信能力");
-  npc.pending = [];
   npc.beliefs = [...npc.beliefs, ...decision.beliefs].slice(-40);
   for (const relation of decision.relations) {
     npc.relations = npc.relations.filter(r => r.targetId !== relation.targetId);
     npc.relations.push(relation);
   }
+}
+
+export function commitDecision(world: ExplorationWorld, id: string, decision: NpcDecision, registry: CapabilityRegistry): void {
+  const npc = actor(world, id);
+  if (npc.mode !== "agent") throw new Error("普通人物不能运行独立 Agent");
+  for (const step of decision.plan?.steps ?? []) registry.get(step);
+  // Validate communication before applying private revisions; host also commits a clone atomically.
+  if (decision.speech && location(world, decision.speech.targetId) !== npc.locationId) throw new Error("对白对象不在场，请使用通信能力");
+  npc.pending = [];
+  commitCognition(world, id, decision);
   if (decision.goals !== null) npc.goals = decision.goals;
   npc.wakeAt = decision.wakeAfterMinutes === null ? null : world.timeMinutes + decision.wakeAfterMinutes;
   if (decision.planDisposition !== "keep" && npc.plan?.status === "running") {
@@ -71,6 +79,7 @@ export function commitDecision(world: ExplorationWorld, id: string, decision: Np
   }
   if (decision.speech) speak(world, id, decision.speech.targetId, decision.speech.text);
   executePlan(world, npc, registry);
+  applyCommitmentChanges(world, decision.commitments ?? [], id);
 }
 
 export function settleDue(world: ExplorationWorld, registry: CapabilityRegistry): void {
@@ -81,6 +90,15 @@ export function settleDue(world: ExplorationWorld, registry: CapabilityRegistry)
     if (npc.wakeAt !== null && npc.wakeAt <= world.timeMinutes) {
       npc.wakeAt = null;
       if (!npc.pending.includes("预约的思考时刻已到")) npc.pending.push("预约的思考时刻已到");
+    }
+  }
+  // Finish work due at this instant before a reminder can interrupt the next activity.
+  for (const item of state(world).commitments ?? []) {
+    if (item.status === "open" && item.dueAt !== null && item.dueAt <= world.timeMinutes) {
+      item.status = "overdue"; item.revision++;
+      const { history: _history, ...snapshot } = item;
+      (item.history ??= []).push(structuredClone(snapshot));
+      notify(world, item.ownerId, "约定时间已到，尚未确认履行：" + item.text);
     }
   }
   for (const letter of state(world).letters) {
@@ -101,6 +119,7 @@ export function settleDue(world: ExplorationWorld, registry: CapabilityRegistry)
 export function nextDue(world: ExplorationWorld, target: number): number {
   const times = state(world).actors.flatMap(n => n.mode === "agent" ? [n.wakeAt, n.plan?.status === "running" ? n.plan.dueAt : null] : []);
   times.push(...state(world).letters.filter(l => l.status === "in_transit").map(l => l.dueAt));
+  times.push(...(state(world).commitments ?? []).filter(c => c.status === "open").map(c => c.dueAt));
   return Math.min(target, ...times.filter((t): t is number => t !== null && t !== undefined && t > world.timeMinutes));
 }
 

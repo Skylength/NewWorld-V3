@@ -1,3 +1,4 @@
+import { parseCommitmentChanges } from "./commitments.js";
 import type { ActionStep, Belief, NpcDecision, NpcSeed, Relation } from "./types.js";
 
 export function record(value: unknown): Record<string, unknown> {
@@ -27,16 +28,26 @@ export function list<T>(value: unknown, max: number, parse: (v: unknown) => T): 
   return value.map(parse);
 }
 export function parseSeed(value: unknown): NpcSeed {
-  const d = fields(value, ["id", "name", "description", "persona", "goals", "locationId"]);
+  const raw = record(value);
+  const { description = "", persona = "", goals = [], displayLabel, nameKnown, appearance, ...required } = raw;
+  const d = fields(required, ["id", "name", "locationId"]);
   const id = identifier(d.id);
   if (id === "player") throw new Error("人物不能使用玩家 ID");
-  return { id, name: text(d.name, 80), description: text(d.description), persona: text(d.persona, 1200), goals: list(d.goals, 5, v => text(v, 200)), locationId: identifier(d.locationId) };
+  if (appearance !== undefined && appearance !== "start" && appearance !== "arrival") throw new Error("人物出现阶段无效");
+  if (nameKnown !== undefined && typeof nameKnown !== "boolean") throw new Error("nameKnown 必须为布尔值");
+  if (d.name === null && nameKnown === true) throw new Error("未知姓名不能标记为已知");
+  if (displayLabel !== undefined) text(displayLabel, 80);
+  const optionalText = (v: unknown, max: number) => v === "" || v === null ? "" : text(v, max);
+  return { id, name: d.name === null ? text(displayLabel, 80) : text(d.name, 80), nameKnown: d.name !== null && nameKnown !== false,
+    ...(appearance === undefined ? {} : { appearance }),
+    description: optionalText(description, 600), persona: optionalText(persona, 1200),
+    goals: list(goals, 5, v => text(v, 200)), locationId: identifier(d.locationId) };
 }
-function belief(value: unknown): Belief {
+export function belief(value: unknown): Belief {
   const d = fields(value, ["text", "evidenceIds"]);
   return { text: text(d.text), evidenceIds: list(d.evidenceIds, 8, v => text(v, 80)) };
 }
-function relation(value: unknown): Relation {
+export function relation(value: unknown): Relation {
   const d = fields(value, ["targetId", "text", "evidenceIds", "affinity", "trust", "respect", "fear", "ties"]);
   return { targetId: identifier(d.targetId), text: text(d.text), evidenceIds: list(d.evidenceIds, 8, v => text(v, 80)), affinity: integer(d.affinity, -100, 100), trust: integer(d.trust, -100, 100), respect: integer(d.respect, -100, 100), fear: integer(d.fear, 0, 100), ties: list(d.ties, 8, v => text(v, 200)) };
 }
@@ -46,7 +57,8 @@ function step(value: unknown): ActionStep {
 }
 export function parseDecision(raw: string): NpcDecision {
   if (raw.length > 24_000) throw new Error("NPC 决策过大");
-  const d = fields(JSON.parse(raw), ["speech", "beliefs", "relations", "goals", "plan", "planDisposition", "wakeAfterMinutes"]);
+  const { commitments, ...base } = record(JSON.parse(raw));
+  const d = fields(base, ["speech", "beliefs", "relations", "goals", "plan", "planDisposition", "wakeAfterMinutes"]);
   if (!["keep", "replace", "cancel"].includes(String(d.planDisposition))) throw new Error("无效计划处置");
   const speech = d.speech === null ? null : fields(d.speech, ["targetId", "text"]);
   const plan = d.plan === null ? null : fields(d.plan, ["purpose", "steps", "interruptOnMessage"]);
@@ -55,6 +67,7 @@ export function parseDecision(raw: string): NpcDecision {
   const steps = plan ? list(plan.steps, 5, step) : [];
   if (plan && !steps.length) throw new Error("方案至少包含一个步骤");
   return {
+    commitments: parseCommitmentChanges(commitments),
     speech: speech ? { targetId: identifier(speech.targetId), text: text(speech.text, 1800) } : null,
     beliefs: list(d.beliefs, 4, belief), relations: list(d.relations, 4, relation),
     goals: d.goals === null ? null : list(d.goals, 5, v => text(v, 200)),

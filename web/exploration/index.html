@@ -21,7 +21,7 @@
   <section id="save-drawer" class="save-drawer" aria-label="存档管理" hidden>
     <div><strong id="save-world-title">正在读取世界</strong><p id="save-status" class="hint">读取存档…</p></div>
     <label class="save-picker">选择旅程<select id="save-select" disabled><option>正在读取…</option></select></label>
-    <div class="save-actions"><button id="load-save" class="button secondary" type="button" disabled>继续存档</button><button id="new-world" class="button secondary" type="button" disabled>＋ 新世界</button><button id="refresh-saves" class="button quiet" type="button">刷新</button><a class="button quiet" href="/api/export" download>导出存档 ↗</a></div>
+    <div class="save-actions"><button id="load-save" class="button secondary" type="button" disabled>继续存档</button><button id="new-world" class="button secondary" type="button" disabled>＋ 重新开局</button><button id="refresh-saves" class="button quiet" type="button">刷新</button><a class="button quiet" href="/api/export" download>导出存档 ↗</a></div>
     <p class="hint save-explanation">每轮自动保存。新建世界会保留已有存档。</p>
   </section>
 
@@ -29,8 +29,6 @@
     <nav class="game-rail" aria-label="游玩功能">
       <button type="button" data-panel="map" aria-controls="game-panel" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2Z M9 3v16 M15 5v16"/></svg>地图</button>
       <button type="button" data-panel="npcs" aria-controls="game-panel" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-4a6 6 0 0 1 12 0v4 M17 4a3 3 0 0 1 0 6 M18 14a5 5 0 0 1 3 4v3"/></svg>人物</button>
-      <button type="button" disabled title="背包功能尚未接入"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="6" width="14" height="16" rx="3"/><path d="M9 6V4a3 3 0 0 1 6 0v2 M5 12h14 M9 16h6"/></svg>背包<small>待开放</small></button>
-      <button type="button" disabled title="技能功能尚未接入"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z"/></svg>技能<small>待开放</small></button>
       <button type="button" data-panel="journal" aria-controls="game-panel" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5C9 3 5 3 2 4v16c4-1 7-1 10 1 3-2 6-2 10-1V4c-3-1-7-1-10 1v16"/></svg>日志</button>
     </nav>
     <section class="game-main" aria-label="故事与行动">
@@ -45,8 +43,8 @@
           <form id="action-form" class="composer">
             <select id="action-mode" aria-label="当前操作类型" hidden><option value="interact">普通行动</option><option value="explore">探索新地点</option></select>
             <div id="exploration-intent" class="intent-chip" hidden><span>地图行动 · 探索新地点</span><button id="clear-intent" type="button" aria-label="取消探索模式，恢复普通行动">×</button></div>
-            <label class="sr-only" for="action-input">说些什么，或描述你想做的事</label><textarea id="action-input" name="action" rows="2" maxlength="2000" placeholder="说些什么，或描述你想做的事…" disabled></textarea>
-            <div class="composer-bottom"><span id="action-mode-help" class="hint">自由描述对白、行动或想去的地方</span><span id="character-count" class="hint">0 / 2000</span><button id="cancel-turn" class="button secondary" type="button" hidden>停止生成</button><button id="send-action" class="button primary" type="submit" disabled>发送 ↑</button></div>
+            <label class="sr-only" for="action-input">行动</label><textarea id="action-input" name="action" rows="2" maxlength="2000"  disabled></textarea>
+            <div class="composer-bottom"><span id="action-mode-help" class="hint"></span><span id="character-count" class="hint">0 / 2000</span><button id="cancel-turn" class="button secondary" type="button" hidden>停止生成</button><button id="send-action" class="button primary" type="submit" disabled>发送 ↑</button></div>
           </form>
           <div class="composer-hint">Enter 发送 · Shift + Enter 换行</div>
         </div>
